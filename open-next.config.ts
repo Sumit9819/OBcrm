@@ -5,18 +5,22 @@ const config: OpenNextConfig = {
         override: {
             wrapper: "cloudflare-node",
             converter: "edge",
-            // Use the Cloudflare cache adapter (optional — comment out if not using KV cache)
-            // incrementalCache: "dummy",
-            // tagCache: "dummy",
-            // queue: "dummy",
+            proxyExternalRequest: "fetch",
+            incrementalCache: "dummy",
+            tagCache: "dummy",
+            queue: "dummy",
         },
     },
-
+    edgeExternals: ["node:crypto"],
     middleware: {
         external: true,
         override: {
             wrapper: "cloudflare-edge",
             converter: "edge",
+            proxyExternalRequest: "fetch",
+            incrementalCache: "dummy",
+            tagCache: "dummy",
+            queue: "dummy",
         },
     },
 };
