@@ -51,7 +51,12 @@ export async function middleware(request: NextRequest) {
     // Skip for: super-admin domain, local dev root, and static assets
     // ══════════════════════════════════════════════════════════════
     const isAdminDomain = hostname === ADMIN_DOMAIN || hostname.startsWith('admin.localhost')
-    const isRootDomain = hostname === ROOT_DOMAIN || hostname === `www.${ROOT_DOMAIN}` || hostname === 'localhost:3000'
+    const isRootDomain =
+        hostname === ROOT_DOMAIN ||
+        hostname === `www.${ROOT_DOMAIN}` ||
+        hostname === 'localhost:3000' ||
+        hostname.endsWith('.workers.dev') ||  // Cloudflare Workers preview URLs
+        hostname.endsWith('.pages.dev')        // Cloudflare Pages preview URLs
 
     if (!isAdminDomain && !isRootDomain) {
         // Check if we already have a cached agency cookie for this request
