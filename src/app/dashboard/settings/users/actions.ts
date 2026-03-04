@@ -20,72 +20,77 @@ type CreateUserInput = {
  * Uses the service role key (admin client) so it bypasses email confirmation.
  */
 export async function createUser(input: CreateUserInput) {
-    const supabase = await createClient()
-    const admin = createAdminClient()
+    try {
+        const supabase = await createClient()
+        const admin = createAdminClient()
 
-    // Verify the caller is an admin
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return { error: "Unauthorized" }
+        // Verify the caller is an admin
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) return { error: "Unauthorized" }
 
-    const { data: profile } = await supabase
-        .from("users")
-        .select("role, agency_id")
-        .eq("id", user.id)
-        .single()
+        const { data: profile } = await supabase
+            .from("users")
+            .select("role, agency_id")
+            .eq("id", user.id)
+            .single()
 
-    if (!profile || !["super_admin", "agency_admin"].includes(profile.role)) {
-        return { error: "Only admins can create users" }
-    }
+        if (!profile || !["super_admin", "agency_admin"].includes(profile.role)) {
+            return { error: "Only admins can create users" }
+        }
 
-    // Basic validation
-    if (!input.email || !input.password || !input.first_name || !input.role) {
-        return { error: "Email, password, first name, and role are required" }
-    }
-    if (input.password.length < 8) {
-        return { error: "Password must be at least 8 characters" }
-    }
+        // Basic validation
+        if (!input.email || !input.password || !input.first_name || !input.role) {
+            return { error: "Email, password, first name, and role are required" }
+        }
+        if (input.password.length < 8) {
+            return { error: "Password must be at least 8 characters" }
+        }
 
-    // 1. Create the auth user (bypasses email confirmation)
-    const { data: authData, error: authError } = await admin.auth.admin.createUser({
-        email: input.email.trim().toLowerCase(),
-        password: input.password,
-        email_confirm: true,  // auto-confirm so they can log in immediately
-        user_metadata: {
-            first_name: input.first_name.trim(),
-            last_name: input.last_name?.trim() || "",
-        },
-    })
-
-    if (authError) {
-        return { error: authError.message }
-    }
-
-    const newUserId = authData.user.id
-
-    // 2. Upsert the profile row (in case the trigger didn't fire or needs extra fields)
-    const { error: profileError } = await admin
-        .from("users")
-        .upsert({
-            id: newUserId,
+        // 1. Create the auth user (bypasses email confirmation)
+        const { data: authData, error: authError } = await admin.auth.admin.createUser({
             email: input.email.trim().toLowerCase(),
-            first_name: input.first_name.trim(),
-            last_name: input.last_name?.trim() || "",
-            role: input.role,
-            job_title: input.job_title?.trim() || null,
-            phone: input.phone?.trim() || null,
-            agency_id: profile.agency_id,
-        }, { onConflict: "id" })
+            password: input.password,
+            email_confirm: true,  // auto-confirm so they can log in immediately
+            user_metadata: {
+                first_name: input.first_name.trim(),
+                last_name: input.last_name?.trim() || "",
+            },
+        })
 
-    if (profileError) {
-        // Rollback: delete the auth user we just created
-        await admin.auth.admin.deleteUser(newUserId)
-        return { error: "Failed to save profile: " + profileError.message }
+        if (authError) {
+            return { error: authError.message }
+        }
+
+        const newUserId = authData.user.id
+
+        // 2. Upsert the profile row (in case the trigger didn't fire or needs extra fields)
+        const { error: profileError } = await admin
+            .from("users")
+            .upsert({
+                id: newUserId,
+                email: input.email.trim().toLowerCase(),
+                first_name: input.first_name.trim(),
+                last_name: input.last_name?.trim() || "",
+                role: input.role,
+                job_title: input.job_title?.trim() || null,
+                phone: input.phone?.trim() || null,
+                agency_id: profile.agency_id,
+            }, { onConflict: "id" })
+
+        if (profileError) {
+            // Rollback: delete the auth user we just created
+            await admin.auth.admin.deleteUser(newUserId)
+            return { error: "Failed to save profile: " + profileError.message }
+        }
+
+        try { revalidatePath("/dashboard/settings/users") } catch { /* no-op on edge */ }
+        try { revalidatePath("/dashboard/settings/agents") } catch { /* no-op on edge */ }
+
+        return { success: true, userId: newUserId }
+    } catch (err) {
+        console.error("createUser unexpected error:", err)
+        return { error: err instanceof Error ? err.message : "An unexpected error occurred. Check server logs." }
     }
-
-    revalidatePath("/dashboard/settings/users")
-    revalidatePath("/dashboard/settings/agents")
-
-    return { success: true, userId: newUserId }
 }
 
 /**

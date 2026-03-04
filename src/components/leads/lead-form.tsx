@@ -21,6 +21,12 @@ import {
     SelectTrigger, SelectValue,
 } from "@/components/ui/select"
 
+const LEAD_SOURCES = [
+    "Facebook", "Instagram", "WhatsApp", "LinkedIn",
+    "Website", "Email Campaign", "Phone Call",
+    "Referral", "Walk-In", "Other",
+] as const
+
 const formSchema = z.object({
     firstName: z.string().min(2, "First name must be at least 2 characters"),
     lastName: z.string().min(2, "Last name must be at least 2 characters"),
@@ -30,6 +36,7 @@ const formSchema = z.object({
     courseInterest: z.string().min(2, "Course interest is required"),
     nationality: z.string().optional(),
     dateOfBirth: z.string().optional(),
+    source: z.string().optional(),
     notes: z.string().optional(),
     isSharedWithCompany: z.boolean().default(false),
 })
@@ -70,7 +77,7 @@ export function LeadForm() {
         defaultValues: {
             firstName: "", lastName: "", email: "", phone: "",
             destinationCountry: "", courseInterest: "",
-            nationality: "", dateOfBirth: "", notes: "",
+            nationality: "", dateOfBirth: "", source: "", notes: "",
         },
     })
 
@@ -108,6 +115,7 @@ export function LeadForm() {
             course_interest: values.courseInterest,
             nationality: values.nationality || null,
             date_of_birth: values.dateOfBirth || null,
+            source: values.source || null,
             notes: values.notes || null,
             custom_data: Object.keys(customData).length > 0 ? customData : null,
             is_shared_with_company: true,
@@ -223,6 +231,22 @@ export function LeadForm() {
                             <FormItem>
                                 <FormLabel>Course / Major Interest <span className="text-red-500">*</span></FormLabel>
                                 <FormControl><Input placeholder="e.g. Master of Data Science" {...field} /></FormControl>
+                                <FormMessage />
+                            </FormItem>
+                        )} />
+                        <FormField control={form.control} name="source" render={({ field }) => (
+                            <FormItem>
+                                <FormLabel>Lead Source</FormLabel>
+                                <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                    <FormControl>
+                                        <SelectTrigger><SelectValue placeholder="How did they find you?" /></SelectTrigger>
+                                    </FormControl>
+                                    <SelectContent>
+                                        {LEAD_SOURCES.map(s => (
+                                            <SelectItem key={s} value={s}>{s}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
                                 <FormMessage />
                             </FormItem>
                         )} />
