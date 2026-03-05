@@ -20,6 +20,7 @@ export default function SettingsPage() {
     // Form state
     const [companyName, setCompanyName] = useState("")
     const [primaryColor, setPrimaryColor] = useState("#0ea5e9")
+    const [sidebarColor, setSidebarColor] = useState("#ffffff")
     const [domainValue, setDomainValue] = useState("")
     const [logoFile, setLogoFile] = useState<File | null>(null)
 
@@ -49,6 +50,7 @@ export default function SettingsPage() {
                 setAgency(agencyData)
                 setCompanyName(agencyData.company_name || "")
                 setPrimaryColor(agencyData.branding_primary_color || "#0ea5e9")
+                setSidebarColor(agencyData.sidebar_color || "#ffffff")
                 setDomainValue(agencyData.custom_domain || "")
             }
         }
@@ -69,6 +71,7 @@ export default function SettingsPage() {
         setSaving(true)
         const fd = new FormData()
         fd.set('primaryColor', primaryColor)
+        fd.set('sidebarColor', sidebarColor)
         const result = await updateBranding(fd)
         if (result.error) toast.error(result.error)
         else toast.success("Branding saved!")
@@ -178,6 +181,13 @@ export default function SettingsPage() {
                                         <div className="flex gap-2">
                                             <input type="color" value={primaryColor} onChange={e => setPrimaryColor(e.target.value)} className="w-10 h-10 rounded-md border cursor-pointer" />
                                             <Input value={primaryColor} onChange={e => setPrimaryColor(e.target.value)} className="font-mono text-sm" />
+                                        </div>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label className="text-xs text-muted-foreground">Sidebar Color</Label>
+                                        <div className="flex gap-2">
+                                            <input type="color" value={sidebarColor} onChange={e => setSidebarColor(e.target.value)} className="w-10 h-10 rounded-md border cursor-pointer" />
+                                            <Input value={sidebarColor} onChange={e => setSidebarColor(e.target.value)} className="font-mono text-sm" />
                                         </div>
                                     </div>
                                 </div>

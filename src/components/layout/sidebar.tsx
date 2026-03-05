@@ -284,17 +284,23 @@ function DirectLinkItem({ group }: { group: NavItem }) {
     )
 }
 
-export function AppSidebar({ userRole }: { userRole: string }) {
+export function AppSidebar({ userRole, logoUrl, sidebarColor }: { userRole: string, logoUrl?: string, sidebarColor?: string }) {
     const filterItems = (items: NavItem[]) =>
         items.filter(item => !item.roles || item.roles.length === 0 || item.roles.includes(userRole))
 
     return (
-        <Sidebar className="border-r border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        <Sidebar className="border-r border-border/40 transition-colors" style={sidebarColor ? { '--sidebar': sidebarColor, backgroundColor: 'var(--sidebar)' } as React.CSSProperties : undefined}>
             <SidebarHeader className="h-16 border-b px-4 flex justify-center border-border/40">
                 <div className="flex items-center gap-2 font-semibold">
-                    <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center shrink-0">
-                        <span className="text-primary-foreground font-bold text-lg leading-none">G</span>
-                    </div>
+                    {logoUrl ? (
+                        <div className="h-8 w-8 shrink-0 overflow-hidden flex items-center justify-center relative rounded-md">
+                            <img src={logoUrl} alt="Logo" className="object-contain w-full h-full" />
+                        </div>
+                    ) : (
+                        <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center shrink-0">
+                            <span className="text-primary-foreground font-bold text-lg leading-none">G</span>
+                        </div>
+                    )}
                     <span className="text-xl tracking-tight">GrowthCRM</span>
                 </div>
             </SidebarHeader>

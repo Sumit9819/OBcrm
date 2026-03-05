@@ -62,7 +62,6 @@ export function LogCallDialog({
             return
         }
 
-        // 2. Auto-create follow-up reminder if requested
         if (followUpDays !== "0") {
             const { data: { user } } = await supabase.auth.getUser()
             if (user) {

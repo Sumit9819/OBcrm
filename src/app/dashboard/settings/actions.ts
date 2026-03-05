@@ -47,10 +47,15 @@ export async function updateBranding(formData: FormData) {
     }
 
     const primaryColor = formData.get('primaryColor') as string
+    const sidebarColor = formData.get('sidebarColor') as string
+
+    const updates: any = {};
+    if (primaryColor) updates.branding_primary_color = primaryColor;
+    if (sidebarColor) updates.sidebar_color = sidebarColor;
 
     const { error } = await supabase
         .from('agencies')
-        .update({ branding_primary_color: primaryColor })
+        .update(updates)
         .eq('id', userData.agency_id)
 
     if (error) return { error: error.message }
