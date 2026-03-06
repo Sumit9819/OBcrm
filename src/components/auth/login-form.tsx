@@ -30,11 +30,21 @@ export function LoginForm() {
                 ? await login(formData)
                 : await signup(formData)
 
+            console.log("Server action returned:", result)
+
             if (result?.error) {
                 setError(result.error)
                 setLoading(false)
             } else if (result?.success && result.redirect) {
                 window.location.href = result.redirect
+            } else {
+                console.error("Unknown result from server action:", result)
+                if ((result as any) === undefined) {
+                    setError("No response from server. Check console.")
+                } else {
+                    setError("Unexpected response format.")
+                }
+                setLoading(false)
             }
         } catch (err: any) {
             console.error("Login Server Action Error:", err)
