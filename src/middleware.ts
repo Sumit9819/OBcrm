@@ -128,11 +128,16 @@ export async function middleware(request: NextRequest) {
         let needsRefresh = !role
 
         if (!role) {
-            const { data: profile } = await supabase
+            const { data: profile, error } = await supabase
                 .from('users')
                 .select('role, agency_id')
                 .eq('id', user.id)
                 .single()
+
+            if (error || !profile) {
+                console.error('[Middleware] Failed to resolve user role. User ID:', user.id)
+                console.error('[Middleware] Supabase error:', error)
+            }
 
             role = profile?.role || 'unknown'
             needsRefresh = true

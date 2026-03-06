@@ -32,6 +32,8 @@ export function LoginForm() {
         if (result?.error) {
             setError(result.error)
             setLoading(false)
+        } else if (result?.success && result.redirect) {
+            window.location.href = result.redirect
         }
     }
 
