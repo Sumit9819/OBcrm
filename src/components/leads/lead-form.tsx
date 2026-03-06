@@ -39,6 +39,7 @@ const formSchema = z.object({
     academicQualification: z.string().optional(),
     source: z.string().optional(),
     notes: z.string().optional(),
+    pipelineId: z.string().min(1, "Select a pipeline"),
     isSharedWithCompany: z.boolean().default(false),
 })
 
@@ -53,24 +54,34 @@ export function LeadForm({ onSuccess }: { onSuccess?: () => void }) {
     const [submitting, setSubmitting] = useState(false)
     const [customFields, setCustomFields] = useState<CustomField[]>([])
     const [customData, setCustomData] = useState<Record<string, string | boolean>>({})
+    const [pipelines, setPipelines] = useState<{ id: string, name: string, country: string | null, is_default: boolean }[]>([])
+    const [pipelineStages, setPipelineStages] = useState<{ pipeline_id: string, name: string }[]>([])
     const router = useRouter()
     const supabase = createClient()
 
     useEffect(() => {
-        const loadCustomFields = async () => {
+        const loadConfig = async () => {
             const { data: { user } } = await supabase.auth.getUser()
             if (!user) return
             const { data: profile } = await supabase.from('users').select('agency_id').eq('id', user.id).single()
             if (!profile?.agency_id) return
-            const { data } = await supabase
-                .from('custom_fields')
-                .select('*')
-                .eq('agency_id', profile.agency_id)
-                .eq('is_active', true)
-                .order('sort_order')
-            setCustomFields(data || [])
+
+            const [fieldsRes, pipelinesRes, stagesRes] = await Promise.all([
+                supabase.from('custom_fields').select('*').eq('agency_id', profile.agency_id).eq('is_active', true).order('sort_order'),
+                supabase.from('pipelines').select('id, name, country, is_default').eq('agency_id', profile.agency_id).order('is_default', { ascending: false }),
+                supabase.from('pipeline_stages').select('pipeline_id, name').eq('agency_id', profile.agency_id).order('sort_order')
+            ])
+
+            setCustomFields(fieldsRes.data || [])
+
+            if (pipelinesRes.data) {
+                setPipelines(pipelinesRes.data)
+            }
+            if (stagesRes.data) {
+                setPipelineStages(stagesRes.data)
+            }
         }
-        loadCustomFields()
+        loadConfig()
     }, [])
 
     const form = useForm<FormValues>({
@@ -79,9 +90,17 @@ export function LeadForm({ onSuccess }: { onSuccess?: () => void }) {
             firstName: "", lastName: "", email: "", phone: "",
             destinationCountry: "", courseInterest: "",
             nationality: "", dateOfBirth: "", academicQualification: "",
-            source: "", notes: "",
+            source: "", notes: "", pipelineId: ""
         },
     })
+
+    // Set default pipeline once loaded
+    useEffect(() => {
+        if (pipelines.length > 0 && !form.getValues("pipelineId")) {
+            const defaultPipeline = pipelines.find(p => p.is_default) || pipelines[0]
+            form.setValue("pipelineId", defaultPipeline.id)
+        }
+    }, [pipelines, form])
 
     async function onSubmit(values: FormValues) {
         setSubmitting(true)
@@ -106,6 +125,10 @@ export function LeadForm({ onSuccess }: { onSuccess?: () => void }) {
             return
         }
 
+        // Determine default status based on selected pipeline's stages
+        const firstStage = pipelineStages.find(s => s.pipeline_id === values.pipelineId);
+        const startingStatus = firstStage ? firstStage.name : 'New';
+
         const { error } = await supabase.from('leads').insert({
             agency_id: profile.agency_id,
             owner_id: user.id,
@@ -122,7 +145,8 @@ export function LeadForm({ onSuccess }: { onSuccess?: () => void }) {
             notes: values.notes || null,
             custom_data: Object.keys(customData).length > 0 ? customData : null,
             is_shared_with_company: true,
-            status: 'New',
+            status: startingStatus,
+            pipeline_id: values.pipelineId,
         })
 
         if (error) {
@@ -136,7 +160,7 @@ export function LeadForm({ onSuccess }: { onSuccess?: () => void }) {
         if (onSuccess) {
             onSuccess()
         } else {
-            router.push('/dashboard/leads/private')
+            router.push(`/dashboard/leads/kanban?pipeline=${values.pipelineId}`)
             router.refresh()
         }
     }
@@ -249,6 +273,24 @@ export function LeadForm({ onSuccess }: { onSuccess?: () => void }) {
                                         <SelectItem value="DE">🇩🇪 Germany</SelectItem>
                                         <SelectItem value="SG">🇸🇬 Singapore</SelectItem>
                                         <SelectItem value="JP">🇯🇵 Japan</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                <FormMessage />
+                            </FormItem>
+                        )} />
+                        <FormField control={form.control} name="pipelineId" render={({ field }) => (
+                            <FormItem>
+                                <FormLabel>Target Pipeline <span className="text-red-500">*</span></FormLabel>
+                                <Select onValueChange={field.onChange} defaultValue={field.value} value={field.value}>
+                                    <FormControl>
+                                        <SelectTrigger><SelectValue placeholder="Select a pipeline..." /></SelectTrigger>
+                                    </FormControl>
+                                    <SelectContent>
+                                        {pipelines.map(p => (
+                                            <SelectItem key={p.id} value={p.id}>
+                                                {p.name} {p.country && `(${p.country})`} {p.is_default && "★"}
+                                            </SelectItem>
+                                        ))}
                                     </SelectContent>
                                 </Select>
                                 <FormMessage />

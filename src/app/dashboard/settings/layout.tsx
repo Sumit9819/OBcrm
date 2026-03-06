@@ -12,6 +12,7 @@ const NAV_SECTIONS = [
         label: "Agency",
         items: [
             { href: "/dashboard/settings", label: "Agency Profile", icon: Building2 },
+            { href: "/dashboard/settings/partners", label: "Partners & Universities", icon: Globe },
             { href: "/dashboard/settings/profile", label: "My Profile", icon: User },
         ]
     },

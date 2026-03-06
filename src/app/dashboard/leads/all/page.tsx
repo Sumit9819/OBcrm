@@ -174,6 +174,26 @@ export default function AllLeadsPage() {
             const { data: { user } } = await supabase.auth.getUser()
             const { data: profile } = await supabase.from("users").select("agency_id").eq("id", user!.id).single()
 
+            // Get default pipeline
+            const { data: pipelines } = await supabase.from('pipelines')
+                .select('id')
+                .eq('agency_id', profile?.agency_id)
+                .order('is_default', { ascending: false })
+                .limit(1)
+
+            const defaultPipelineId = pipelines?.[0]?.id || null
+
+            // Get first stage for default status
+            let startingStatus = "New"
+            if (defaultPipelineId) {
+                const { data: stages } = await supabase.from('pipeline_stages')
+                    .select('name')
+                    .eq('pipeline_id', defaultPipelineId)
+                    .order('sort_order')
+                    .limit(1)
+                if (stages && stages[0]) startingStatus = stages[0].name
+            }
+
             const records = csvRows.map(row => ({
                 agency_id: profile?.agency_id,
                 owner_id: user!.id,
@@ -184,7 +204,8 @@ export default function AllLeadsPage() {
                 destination_country: row.destination_country || row.destination || row.country || "",
                 course_interest: row.course_interest || row.course || "",
                 nationality: row.nationality || "",
-                status: "New",
+                status: startingStatus,
+                pipeline_id: defaultPipelineId,
                 is_shared_with_company: true,
             }))
 

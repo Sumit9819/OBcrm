@@ -16,7 +16,7 @@ import {
     ArrowLeft, Phone, Mail, Globe, BookOpen, FileText, Briefcase,
     MoreHorizontal, Edit, MessageSquare, Archive, CheckCircle, Clock,
     UserPlus, CheckSquare, GraduationCap, Plus, Calendar, Flag,
-    Loader2, User, MapPin, PhoneCall, PhoneOff, FlaskConical,
+    Loader2, User, MapPin, PhoneCall, PhoneOff, FlaskConical, AlertTriangle,
 } from "lucide-react"
 import { format } from "date-fns"
 import { toast } from "sonner"
@@ -51,11 +51,12 @@ type Props = {
     staffList: any[]
     customFields: any[]
     pipelineStages: any[]
+    documentTemplates: any[]
     currentUserId: string
     callLogs?: any[]
 }
 
-export function LeadDetailClient({ lead, activities, documents, applications, tasks, staffList, customFields, pipelineStages, currentUserId, callLogs = [] }: Props) {
+export function LeadDetailClient({ lead, activities, documents, applications, tasks, staffList, customFields, pipelineStages, documentTemplates, currentUserId, callLogs = [] }: Props) {
     const router = useRouter()
     const [isPending, startTransition] = useTransition()
 
@@ -104,10 +105,26 @@ export function LeadDetailClient({ lead, activities, documents, applications, ta
         })
     }
 
-    const handleStatusChange = (status: string) => run(
-        () => updateLeadStatus(lead.id, status),
-        () => toast.success(`Status → ${status}`)
-    )
+    const handleStatusChange = (status: string) => {
+        // Validate required documents
+        const targetStage = pipelineStages.find((s: any) => s.name === status)
+        if (targetStage) {
+            const requiredDocs = documentTemplates.filter((t: any) => t.stage_id === targetStage.id && t.is_mandatory)
+            const missingDocs = requiredDocs.filter((t: any) =>
+                !documents.some((d: any) => d.name.toLowerCase() === t.name.toLowerCase())
+            )
+
+            if (missingDocs.length > 0) {
+                toast.error(`Cannot move to ${status}. Missing mandatory documents: ${missingDocs.map((d: any) => d.name).join(", ")}`)
+                return
+            }
+        }
+
+        run(
+            () => updateLeadStatus(lead.id, status),
+            () => toast.success(`Status → ${status}`)
+        )
+    }
 
     const handleAssign = (userId: string) => run(
         () => assignLead(lead.id, userId || null),
@@ -392,7 +409,31 @@ export function LeadDetailClient({ lead, activities, documents, applications, ta
                 </TabsContent>
 
                 {/* ── Documents ────────────── */}
-                <TabsContent value="documents">
+                <TabsContent value="documents" className="space-y-4">
+                    {/* Add Missing Required Documents Check */}
+                    {(() => {
+                        const currentStage = pipelineStages.find((s: any) => s.name === lead.status)
+                        const stageDocs = documentTemplates.filter((t: any) => t.stage_id === currentStage?.id)
+                        const missingDocs = stageDocs.filter((t: any) => t.is_mandatory && !documents.some((d: any) => d.name.toLowerCase() === t.name.toLowerCase()))
+
+                        if (missingDocs.length > 0) {
+                            return (
+                                <div className="p-4 border border-rose-200 bg-rose-50 rounded-lg">
+                                    <h4 className="text-sm font-semibold text-rose-800 flex items-center gap-2 mb-2">
+                                        <AlertTriangle className="h-4 w-4" /> Action Required: Missing Documents
+                                    </h4>
+                                    <p className="text-xs text-rose-700 mb-3">To stay in the '{lead.status}' stage or advance further, please upload the following mandatory documents.</p>
+                                    <ul className="space-y-1">
+                                        {missingDocs.map((d: any) => (
+                                            <li key={d.id} className="text-xs font-medium text-rose-900">• {d.name}</li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            )
+                        }
+                        return null
+                    })()}
+
                     {documents.length === 0 ? (
                         <Card><CardContent className="p-12 text-center text-muted-foreground text-sm">
                             No documents uploaded.{' '}

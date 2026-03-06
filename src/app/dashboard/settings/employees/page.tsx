@@ -34,23 +34,16 @@ type Employee = {
     status: "active" | "inactive"
 }
 
-const roleColors: Record<string, string> = {
-    super_admin: "bg-red-100 text-red-700",
-    agency_admin: "bg-purple-100 text-purple-700",
-    agent: "bg-blue-100 text-blue-700",
-    accountant: "bg-emerald-100 text-emerald-700",
-    staff: "bg-amber-100 text-amber-700",
+type DBRole = {
+    slug: string
+    name: string
+    color: string
+    is_system: boolean
 }
-
-const ROLES = [
-    { value: "agency_admin", label: "Agency Admin" },
-    { value: "agent", label: "Counsellor / Agent" },
-    { value: "accountant", label: "Accountant" },
-    { value: "staff", label: "Staff" },
-]
 
 export default function EmployeesPage() {
     const [employees, setEmployees] = useState<Employee[]>([])
+    const [dbRoles, setDbRoles] = useState<DBRole[]>([])
     const [loading, setLoading] = useState(true)
     const [search, setSearch] = useState("")
     const [open, setOpen] = useState(false)
@@ -62,12 +55,22 @@ export default function EmployeesPage() {
     })
     const supabase = createClient()
 
-    useEffect(() => { fetchEmployees() }, [])
+    useEffect(() => { fetchData() }, [])
 
-    const fetchEmployees = async () => {
+    const fetchData = async () => {
         setLoading(true)
+        // Load employees
         const { data } = await supabase.from("users").select("*").order("created_at", { ascending: false })
         setEmployees(data as Employee[] || [])
+        // Load dynamic roles from custom_roles
+        const { data: { user } } = await supabase.auth.getUser()
+        if (user) {
+            const { data: profile } = await supabase.from("users").select("agency_id").eq("id", user.id).single()
+            if (profile?.agency_id) {
+                const { data: roles } = await supabase.from("custom_roles").select("slug, name, color, is_system").eq("agency_id", profile.agency_id).order("created_at")
+                if (roles) setDbRoles(roles)
+            }
+        }
         setLoading(false)
     }
 
@@ -124,7 +127,7 @@ export default function EmployeesPage() {
 
         setSaving(false)
         setOpen(false)
-        fetchEmployees()
+        fetchData()
     }
 
     const filtered = employees.filter(e =>
@@ -158,8 +161,8 @@ export default function EmployeesPage() {
                     <p className="text-xs text-muted-foreground">Active</p>
                 </CardContent></Card>
                 <Card><CardContent className="p-4">
-                    <p className="text-2xl font-bold text-blue-600">{employees.filter(e => e.role === "agent").length}</p>
-                    <p className="text-xs text-muted-foreground">Counsellors</p>
+                    <p className="text-2xl font-bold text-blue-600">{dbRoles.length}</p>
+                    <p className="text-xs text-muted-foreground">Roles</p>
                 </CardContent></Card>
                 <Card><CardContent className="p-4">
                     <p className="text-2xl font-bold text-purple-600">{employees.filter(e => e.role === "agency_admin" || e.role === "super_admin").length}</p>
@@ -217,8 +220,8 @@ export default function EmployeesPage() {
                                         </div>
                                     </TableCell>
                                     <TableCell>
-                                        <Badge className={`text-[10px] capitalize ${roleColors[emp.role] || "bg-slate-100 text-slate-600"}`}>
-                                            {emp.role?.replace(/_/g, " ")}
+                                        <Badge className={`text-[10px] capitalize ${dbRoles.find(r => r.slug === emp.role)?.color || "bg-slate-100 text-slate-600"}`}>
+                                            {dbRoles.find(r => r.slug === emp.role)?.name || emp.role?.replace(/_/g, " ")}
                                         </Badge>
                                     </TableCell>
                                     <TableCell className="text-sm">{emp.position || <span className="text-muted-foreground italic">Not set</span>}</TableCell>
@@ -278,8 +281,8 @@ export default function EmployeesPage() {
                                 <Select value={form.role} onValueChange={v => setForm({ ...form, role: v })}>
                                     <SelectTrigger><SelectValue /></SelectTrigger>
                                     <SelectContent>
-                                        {ROLES.map(r => (
-                                            <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
+                                        {dbRoles.filter(r => !r.is_system || r.slug === 'agency_admin').map(r => (
+                                            <SelectItem key={r.slug} value={r.slug}>{r.name}</SelectItem>
                                         ))}
                                     </SelectContent>
                                 </Select>

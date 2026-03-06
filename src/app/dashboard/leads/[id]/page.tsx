@@ -30,6 +30,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
         customFieldsRes,
         pipelineStagesRes,
         callLogsRes,
+        documentTemplatesRes,
     ] = await Promise.all([
         supabase
             .from("users")
@@ -74,6 +75,10 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
             .select("*")
             .eq("lead_id", id)
             .order("created_at", { ascending: false }),
+        supabase
+            .from("document_templates")
+            .select("*")
+            .eq("agency_id", lead.agency_id)
     ])
 
     const currentUserId = user?.id || ''
@@ -88,6 +93,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
             staffList={staffRes.data || []}
             customFields={customFieldsRes.data || []}
             pipelineStages={pipelineStagesRes.data || []}
+            documentTemplates={documentTemplatesRes.data || []}
             currentUserId={currentUserId}
             callLogs={callLogsRes.data || []}
         />

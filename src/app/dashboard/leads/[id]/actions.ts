@@ -8,6 +8,43 @@ export async function updateLeadStatus(leadId: string, status: string) {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return { error: 'Unauthorized' }
 
+    const { data: leadData } = await supabase.from('leads').select('agency_id, pipeline_id').eq('id', leadId).single()
+    if (!leadData) return { error: 'Lead not found' }
+
+    // Fetch the target stage to check document requirements
+    const { data: targetStage } = await supabase
+        .from('pipeline_stages')
+        .select('id')
+        .eq('agency_id', leadData.agency_id)
+        .eq('pipeline_id', leadData.pipeline_id)
+        .eq('name', status)
+        .single()
+
+    if (targetStage) {
+        // Fetch mandatory document templates for this stage
+        const { data: requiredDocs } = await supabase
+            .from('document_templates')
+            .select('name')
+            .eq('stage_id', targetStage.id)
+            .eq('is_mandatory', true)
+
+        if (requiredDocs && requiredDocs.length > 0) {
+            // Fetch uploaded documents for this lead
+            const { data: uploadedDocs } = await supabase
+                .from('documents')
+                .select('name')
+                .eq('lead_id', leadId)
+
+            const uploadedDocNames = (uploadedDocs || []).map(d => d.name.toLowerCase())
+            const missingDocs = requiredDocs.filter(t => !uploadedDocNames.includes(t.name.toLowerCase()))
+
+            if (missingDocs.length > 0) {
+                const missingNames = missingDocs.map(d => d.name).join(', ')
+                return { error: `Cannot move to ${status}. Missing mandatory documents: ${missingNames}` }
+            }
+        }
+    }
+
     const { data: userData } = await supabase.from('users').select('agency_id').eq('id', user.id).single()
 
     const { error } = await supabase.from('leads').update({ status }).eq('id', leadId)
