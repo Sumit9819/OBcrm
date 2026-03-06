@@ -50,7 +50,7 @@ export default async function DashboardLayout({
     return (
         <SidebarProvider>
             <div
-                className="flex min-h-screen w-full bg-background font-sans overflow-hidden"
+                className="flex h-screen w-full bg-background font-sans"
                 style={{
                     '--sidebar-foreground': sidebarForeground,
                 } as React.CSSProperties}
@@ -63,7 +63,7 @@ export default async function DashboardLayout({
                     brandName={brandName}
                     showBrandName={showBrandName}
                 />
-                <div className="flex w-full flex-col overflow-hidden">
+                <div className="flex flex-1 flex-col min-w-0 overflow-hidden">
                     <Topbar logoUrl={logoUrl} />
                     <main className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8 bg-slate-50/40">
                         {children}
