@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { ArrowRight, Loader2, UserPlus, LogIn } from "lucide-react"
-import { login, signup } from "@/app/auth/actions"
+import { createClient } from "@/lib/supabase/client"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -26,28 +26,55 @@ export function LoginForm() {
         setError(null)
 
         try {
-            const result = mode === "login"
-                ? await login(formData)
-                : await signup(formData)
+            const email = formData.get("email") as string
+            const password = formData.get("password") as string
 
-            console.log("Server action returned:", result)
+            const supabase = createClient()
 
-            if (result?.error) {
-                setError(result.error)
-                setLoading(false)
-            } else if (result?.success && result.redirect) {
-                window.location.href = result.redirect
-            } else {
-                console.error("Unknown result from server action:", result)
-                if ((result as any) === undefined) {
-                    setError("No response from server. Check console.")
-                } else {
-                    setError("Unexpected response format.")
+            if (mode === "login") {
+                const { data: authData, error: signInError } = await supabase.auth.signInWithPassword({
+                    email,
+                    password,
+                })
+
+                if (signInError) {
+                    setError(signInError.message)
+                    setLoading(false)
+                    return
                 }
-                setLoading(false)
+
+                // Let middleware handle routing and role checks post-login
+                // Use a hard redirect after a brief delay to ensure cookies are written
+                setTimeout(() => {
+                    window.location.href = '/dashboard'
+                }, 500)
+            } else {
+                const firstName = formData.get("firstName") as string
+                const lastName = formData.get("lastName") as string
+
+                const { data: authData, error: signUpError } = await supabase.auth.signUp({
+                    email,
+                    password,
+                    options: {
+                        data: {
+                            first_name: firstName,
+                            last_name: lastName,
+                        }
+                    }
+                })
+
+                if (signUpError) {
+                    setError(signUpError.message)
+                    setLoading(false)
+                    return
+                }
+
+                setTimeout(() => {
+                    window.location.href = '/dashboard'
+                }, 500)
             }
         } catch (err: any) {
-            console.error("Login Server Action Error:", err)
+            console.error("Login Client-Side Error:", err)
             setError(err?.message || "An unexpected error occurred during sign in.")
             setLoading(false)
         }
