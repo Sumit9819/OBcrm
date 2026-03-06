@@ -25,15 +25,21 @@ export function LoginForm() {
         setLoading(true)
         setError(null)
 
-        const result = mode === "login"
-            ? await login(formData)
-            : await signup(formData)
+        try {
+            const result = mode === "login"
+                ? await login(formData)
+                : await signup(formData)
 
-        if (result?.error) {
-            setError(result.error)
+            if (result?.error) {
+                setError(result.error)
+                setLoading(false)
+            } else if (result?.success && result.redirect) {
+                window.location.href = result.redirect
+            }
+        } catch (err: any) {
+            console.error("Login Server Action Error:", err)
+            setError(err?.message || "An unexpected error occurred during sign in.")
             setLoading(false)
-        } else if (result?.success && result.redirect) {
-            window.location.href = result.redirect
         }
     }
 
