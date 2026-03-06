@@ -51,8 +51,8 @@ export function GlobalSearch() {
         // Search leads
         const { data: leads } = await supabase
             .from('leads')
-            .select('id, first_name, last_name, email, status')
-            .or(`first_name.ilike.%${q}%,last_name.ilike.%${q}%,email.ilike.%${q}%`)
+            .select('id, first_name, last_name, email, phone, status')
+            .or(`first_name.ilike.%${q}%,last_name.ilike.%${q}%,email.ilike.%${q}%,phone.ilike.%${q}%`)
             .limit(5)
 
         if (leads) {
@@ -163,8 +163,8 @@ export function GlobalSearch() {
                                             className="w-full flex items-center gap-3 px-4 py-3 hover:bg-muted/50 transition-colors text-left"
                                         >
                                             <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${r.type === 'lead' ? 'bg-blue-500/10 text-blue-500' :
-                                                    r.type === 'invoice' ? 'bg-emerald-500/10 text-emerald-500' :
-                                                        'bg-purple-500/10 text-purple-500'
+                                                r.type === 'invoice' ? 'bg-emerald-500/10 text-emerald-500' :
+                                                    'bg-purple-500/10 text-purple-500'
                                                 }`}>
                                                 <Icon className="w-4 h-4" />
                                             </div>

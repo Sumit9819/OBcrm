@@ -16,7 +16,7 @@ import {
     ArrowLeft, Phone, Mail, Globe, BookOpen, FileText, Briefcase,
     MoreHorizontal, Edit, MessageSquare, Archive, CheckCircle, Clock,
     UserPlus, CheckSquare, GraduationCap, Plus, Calendar, Flag,
-    Loader2, User, MapPin,
+    Loader2, User, MapPin, PhoneCall, PhoneOff, FlaskConical,
 } from "lucide-react"
 import { format } from "date-fns"
 import { toast } from "sonner"
@@ -52,9 +52,10 @@ type Props = {
     customFields: any[]
     pipelineStages: any[]
     currentUserId: string
+    callLogs?: any[]
 }
 
-export function LeadDetailClient({ lead, activities, documents, applications, tasks, staffList, customFields, pipelineStages, currentUserId }: Props) {
+export function LeadDetailClient({ lead, activities, documents, applications, tasks, staffList, customFields, pipelineStages, currentUserId, callLogs = [] }: Props) {
     const router = useRouter()
     const [isPending, startTransition] = useTransition()
 
@@ -68,10 +69,19 @@ export function LeadDetailClient({ lead, activities, documents, applications, ta
     const [showCall, setShowCall] = useState(false)
     const [showEdit, setShowEdit] = useState(false)
     const [showTask, setShowTask] = useState(false)
+    const [showConvert, setShowConvert] = useState(false)
+    const [paymentBlocked, setPaymentBlocked] = useState(false)
+    const [paymentBlockedMsg, setPaymentBlockedMsg] = useState("")
+
+    // Call log form state
+    const [callAnswered, setCallAnswered] = useState<boolean | null>(null)
+    const [callFeedback, setCallFeedback] = useState("")
+    const [callComment, setCallComment] = useState("")
+    const [callFollowup, setCallFollowup] = useState("")
+    const [localCallLogs, setLocalCallLogs] = useState<any[]>(callLogs)
 
     // Form states
     const [noteText, setNoteText] = useState("")
-    const [callNotes, setCallNotes] = useState("")
     const [editData, setEditData] = useState({
         first_name: lead.first_name || "", last_name: lead.last_name || "",
         email: lead.email || "", phone: lead.phone || "",
@@ -104,12 +114,48 @@ export function LeadDetailClient({ lead, activities, documents, applications, ta
         () => toast.success("Lead assigned successfully")
     )
 
-    const handleConvertToStudent = () => {
-        if (!confirm(`Convert ${lead.first_name} ${lead.last_name} to an enrolled student? This will set status to Enrolled.`)) return
-        run(
-            () => convertToStudent(lead.id),
-            () => { toast.success("Lead converted to student!"); router.refresh() }
-        )
+    const handleConvertToStudent = (type: 'abroad' | 'test_prep', override = false) => {
+        startTransition(async () => {
+            const r = await convertToStudent(lead.id, type, override)
+            if (r?.error === 'PAYMENT_REQUIRED') {
+                // Show payment warning inside the dialog
+                setPaymentBlocked(true)
+                setPaymentBlockedMsg((r as any).message || 'Payment required.')
+            } else if (r?.error) {
+                toast.error(r.error)
+            } else {
+                toast.success(type === 'abroad' ? "Converted to Student (Abroad)!" : "Converted to Learner (Test Prep)!")
+                setShowConvert(false)
+                setPaymentBlocked(false)
+                router.refresh()
+            }
+        })
+    }
+
+    const handleLogCall = async () => {
+        if (callAnswered === null) { toast.error("Please select if the call was answered"); return }
+        const supabase = (await import("@/lib/supabase/client")).createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) return
+        const { data: profile } = await supabase.from("users").select("agency_id").eq("id", user.id).single()
+
+        const { data, error } = await supabase.from("call_logs").insert({
+            lead_id: lead.id,
+            agency_id: profile?.agency_id,
+            logged_by: user.id,
+            answered: callAnswered,
+            feedback: callFeedback.trim() || null,
+            comment: callComment.trim() || null,
+            next_followup_at: callFollowup || null,
+        }).select("*, logged_by_user:users!call_logs_logged_by_fkey(first_name, last_name)").single()
+
+        if (error) { toast.error(error.message); return }
+        toast.success("Call logged!")
+        setLocalCallLogs(prev => [data, ...prev])
+        // Also add as activity
+        await addActivity(lead.id, 'call', `${callAnswered ? '✅ Answered' : '❌ Not Answered'} — ${callFeedback || 'No feedback'}`)
+        setCallAnswered(null); setCallFeedback(""); setCallComment(""); setCallFollowup("")
+        setShowCall(false)
     }
 
     return (
@@ -153,8 +199,8 @@ export function LeadDetailClient({ lead, activities, documents, applications, ta
                             <DropdownMenuItem onClick={() => setShowCall(true)}><Phone className="h-3.5 w-3.5 mr-2" />Log Call</DropdownMenuItem>
                             <DropdownMenuItem onClick={() => setShowTask(true)}><CheckSquare className="h-3.5 w-3.5 mr-2" />Add Task</DropdownMenuItem>
                             <DropdownMenuSeparator />
-                            <DropdownMenuItem onClick={handleConvertToStudent} className="text-emerald-600">
-                                <GraduationCap className="h-3.5 w-3.5 mr-2" />Convert to Student
+                            <DropdownMenuItem onClick={() => setShowConvert(true)} className="text-emerald-600">
+                                <GraduationCap className="h-3.5 w-3.5 mr-2" />Convert Lead
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
@@ -229,6 +275,7 @@ export function LeadDetailClient({ lead, activities, documents, applications, ta
             <Tabs defaultValue="timeline" className="space-y-4">
                 <TabsList>
                     <TabsTrigger value="timeline">Timeline ({activities.length})</TabsTrigger>
+                    <TabsTrigger value="calls">📞 Calls ({localCallLogs.length})</TabsTrigger>
                     <TabsTrigger value="tasks">Tasks ({tasks.length})</TabsTrigger>
                     <TabsTrigger value="documents">Documents ({documents.length})</TabsTrigger>
                     <TabsTrigger value="applications">Applications ({applications.length})</TabsTrigger>
@@ -268,6 +315,44 @@ export function LeadDetailClient({ lead, activities, documents, applications, ta
                                     </div>
                                 )
                             })}
+                        </div>
+                    )}
+                </TabsContent>
+
+                {/* ── Call Logs ─────────────── */}
+                <TabsContent value="calls" className="space-y-3">
+                    <div className="flex justify-between items-center">
+                        <p className="text-sm text-muted-foreground">{localCallLogs.length} call{localCallLogs.length !== 1 ? 's' : ''} logged</p>
+                        <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setShowCall(true)}>
+                            <Plus className="h-3.5 w-3.5" /> Log Call
+                        </Button>
+                    </div>
+                    {localCallLogs.length === 0 ? (
+                        <Card><CardContent className="p-12 text-center text-muted-foreground text-sm">No calls logged yet. Click "Log Call" to track your first call.</CardContent></Card>
+                    ) : (
+                        <div className="space-y-3">
+                            {localCallLogs.map((cl: any) => (
+                                <div key={cl.id} className="flex gap-3 p-4 rounded-lg border bg-card">
+                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${cl.answered ? 'bg-emerald-100 text-emerald-600' : 'bg-red-100 text-red-500'}`}>
+                                        {cl.answered ? <PhoneCall className="h-3.5 w-3.5" /> : <PhoneOff className="h-3.5 w-3.5" />}
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-2 mb-1">
+                                            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${cl.answered ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`}>
+                                                {cl.answered ? '✅ Answered' : '❌ Not Answered'}
+                                            </span>
+                                            <span className="text-xs text-muted-foreground">{format(new Date(cl.created_at), 'MMM dd, yyyy · hh:mm a')}</span>
+                                        </div>
+                                        {cl.feedback && <p className="text-sm font-medium">{cl.feedback}</p>}
+                                        {cl.comment && <p className="text-xs text-muted-foreground mt-0.5">{cl.comment}</p>}
+                                        {cl.next_followup_at && (
+                                            <p className="text-xs text-blue-600 mt-1 flex items-center gap-1">
+                                                <Calendar className="h-3 w-3" /> Follow up: {format(new Date(cl.next_followup_at), 'MMM dd, yyyy · hh:mm a')}
+                                            </p>
+                                        )}
+                                    </div>
+                                </div>
+                            ))}
                         </div>
                     )}
                 </TabsContent>
@@ -377,12 +462,50 @@ export function LeadDetailClient({ lead, activities, documents, applications, ta
 
             {/* ── Log Call Dialog ─────── */}
             <Dialog open={showCall} onOpenChange={setShowCall}>
-                <DialogContent>
+                <DialogContent className="max-w-md">
                     <DialogHeader><DialogTitle>Log a Call</DialogTitle><DialogDescription>Record call details with {lead.first_name}.</DialogDescription></DialogHeader>
-                    <Textarea placeholder="What was discussed?" value={callNotes} onChange={e => setCallNotes(e.target.value)} rows={4} />
+                    <div className="space-y-4 py-1">
+                        {/* Answered? */}
+                        <div className="space-y-1.5">
+                            <Label>Was the call answered? *</Label>
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={() => setCallAnswered(true)}
+                                    className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg border text-sm font-medium transition-colors ${callAnswered === true ? 'bg-emerald-50 border-emerald-400 text-emerald-700' : 'hover:bg-muted'
+                                        }`}
+                                >
+                                    <PhoneCall className="h-4 w-4" /> Yes, Answered
+                                </button>
+                                <button
+                                    onClick={() => setCallAnswered(false)}
+                                    className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg border text-sm font-medium transition-colors ${callAnswered === false ? 'bg-red-50 border-red-400 text-red-600' : 'hover:bg-muted'
+                                        }`}
+                                >
+                                    <PhoneOff className="h-4 w-4" /> Not Answered
+                                </button>
+                            </div>
+                        </div>
+                        {/* Feedback */}
+                        <div className="space-y-1.5">
+                            <Label>Feedback / Interest Level</Label>
+                            <Input placeholder="e.g. Very interested, asked about visa timeline..." value={callFeedback} onChange={e => setCallFeedback(e.target.value)} />
+                        </div>
+                        {/* Comment */}
+                        <div className="space-y-1.5">
+                            <Label>Internal Comment</Label>
+                            <Textarea placeholder="Internal notes about this call..." value={callComment} onChange={e => setCallComment(e.target.value)} rows={2} />
+                        </div>
+                        {/* Next Followup */}
+                        <div className="space-y-1.5">
+                            <Label>Next Follow-up Date & Time</Label>
+                            <Input type="datetime-local" value={callFollowup} onChange={e => setCallFollowup(e.target.value)} />
+                        </div>
+                    </div>
                     <DialogFooter>
-                        <Button onClick={() => run(() => addActivity(lead.id, 'call', callNotes), () => { toast.success("Call logged"); setCallNotes(""); setShowCall(false) })} disabled={isPending || !callNotes.trim()}>
-                            {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Log Call"}
+                        <Button variant="outline" onClick={() => setShowCall(false)}>Cancel</Button>
+                        <Button onClick={handleLogCall} disabled={isPending || callAnswered === null}>
+                            {isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Phone className="h-4 w-4 mr-2" />}
+                            Log Call
                         </Button>
                     </DialogFooter>
                 </DialogContent>
@@ -499,6 +622,81 @@ export function LeadDetailClient({ lead, activities, documents, applications, ta
                         >
                             {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Create Task"}
                         </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* ── Convert Lead Dialog ─────── */}
+            <Dialog open={showConvert} onOpenChange={(o) => { setShowConvert(o); if (!o) setPaymentBlocked(false) }}>
+                <DialogContent className="max-w-sm">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            <GraduationCap className="h-5 w-5 text-emerald-600" /> Convert Lead
+                        </DialogTitle>
+                        {!paymentBlocked ? (
+                            <DialogDescription>
+                                Converting <strong>{lead.first_name} {lead.last_name}</strong> will set their status to Enrolled. Choose the type:
+                            </DialogDescription>
+                        ) : (
+                            <DialogDescription className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-sm mt-1">
+                                <span>⚠️</span>
+                                <span>{paymentBlockedMsg}</span>
+                            </DialogDescription>
+                        )}
+                    </DialogHeader>
+
+                    {!paymentBlocked ? (
+                        <div className="grid grid-cols-2 gap-3 py-2">
+                            <button
+                                onClick={() => handleConvertToStudent('abroad')}
+                                disabled={isPending}
+                                className="group flex flex-col items-center gap-3 p-5 rounded-xl border-2 hover:border-emerald-400 hover:bg-emerald-50/60 transition-all text-center"
+                            >
+                                <div className="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center group-hover:bg-emerald-200 transition-colors">
+                                    <GraduationCap className="h-6 w-6 text-emerald-600" />
+                                </div>
+                                <div>
+                                    <p className="font-semibold text-sm">Student</p>
+                                    <p className="text-xs text-muted-foreground mt-0.5">Study Abroad<br />(University, College)</p>
+                                </div>
+                            </button>
+                            <button
+                                onClick={() => handleConvertToStudent('test_prep')}
+                                disabled={isPending}
+                                className="group flex flex-col items-center gap-3 p-5 rounded-xl border-2 hover:border-violet-400 hover:bg-violet-50/60 transition-all text-center"
+                            >
+                                <div className="w-12 h-12 rounded-full bg-violet-100 flex items-center justify-center group-hover:bg-violet-200 transition-colors">
+                                    <FlaskConical className="h-6 w-6 text-violet-600" />
+                                </div>
+                                <div>
+                                    <p className="font-semibold text-sm">Learner</p>
+                                    <p className="text-xs text-muted-foreground mt-0.5">Test Prep<br />(IELTS, TOEFL, PTE)</p>
+                                </div>
+                            </button>
+                        </div>
+                    ) : (
+                        /* Payment blocked state — show override option */
+                        <div className="space-y-3 py-2">
+                            <p className="text-sm text-muted-foreground">Admin override — select conversion type to proceed without payment:</p>
+                            <div className="grid grid-cols-2 gap-2">
+                                <Button variant="outline" className="border-emerald-300 text-emerald-700 text-xs" onClick={() => handleConvertToStudent('abroad', true)} disabled={isPending}>
+                                    {isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : '🎓'} Override → Student
+                                </Button>
+                                <Button variant="outline" className="border-violet-300 text-violet-700 text-xs" onClick={() => handleConvertToStudent('test_prep', true)} disabled={isPending}>
+                                    {isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : '🔬'} Override → Learner
+                                </Button>
+                            </div>
+                            <p className="text-xs text-muted-foreground">This override will be logged in the activity timeline.</p>
+                        </div>
+                    )}
+
+                    {isPending && !paymentBlocked && (
+                        <div className="flex justify-center py-2">
+                            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                        </div>
+                    )}
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => { setShowConvert(false); setPaymentBlocked(false) }}>Cancel</Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>

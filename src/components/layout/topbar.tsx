@@ -22,7 +22,7 @@ const roleLabels: Record<string, string> = {
     student: "Student",
 }
 
-export async function Topbar() {
+export async function Topbar({ logoUrl }: { logoUrl?: string }) {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
 
@@ -69,7 +69,7 @@ export async function Topbar() {
                     <DropdownMenuTrigger asChild>
                         <Button variant="ghost" className="relative h-9 w-9 rounded-full ring-2 ring-primary/10 hover:ring-primary/30 transition-all">
                             <Avatar className="h-9 w-9">
-                                <AvatarImage src="/avatars/01.png" alt={displayName} />
+                                <AvatarImage src={logoUrl || "/avatars/01.png"} alt={displayName} />
                                 <AvatarFallback className="bg-primary/10 text-primary font-medium">{initials}</AvatarFallback>
                             </Avatar>
                         </Button>

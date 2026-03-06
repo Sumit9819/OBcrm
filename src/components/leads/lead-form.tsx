@@ -36,6 +36,7 @@ const formSchema = z.object({
     courseInterest: z.string().min(2, "Course interest is required"),
     nationality: z.string().optional(),
     dateOfBirth: z.string().optional(),
+    academicQualification: z.string().optional(),
     source: z.string().optional(),
     notes: z.string().optional(),
     isSharedWithCompany: z.boolean().default(false),
@@ -48,7 +49,7 @@ type CustomField = {
     field_type: string; options: string[] | null; is_required: boolean
 }
 
-export function LeadForm() {
+export function LeadForm({ onSuccess }: { onSuccess?: () => void }) {
     const [submitting, setSubmitting] = useState(false)
     const [customFields, setCustomFields] = useState<CustomField[]>([])
     const [customData, setCustomData] = useState<Record<string, string | boolean>>({})
@@ -77,7 +78,8 @@ export function LeadForm() {
         defaultValues: {
             firstName: "", lastName: "", email: "", phone: "",
             destinationCountry: "", courseInterest: "",
-            nationality: "", dateOfBirth: "", source: "", notes: "",
+            nationality: "", dateOfBirth: "", academicQualification: "",
+            source: "", notes: "",
         },
     })
 
@@ -115,6 +117,7 @@ export function LeadForm() {
             course_interest: values.courseInterest,
             nationality: values.nationality || null,
             date_of_birth: values.dateOfBirth || null,
+            academic_qualification: values.academicQualification || null,
             source: values.source || null,
             notes: values.notes || null,
             custom_data: Object.keys(customData).length > 0 ? customData : null,
@@ -130,8 +133,12 @@ export function LeadForm() {
         }
 
         toast.success(`Lead ${values.firstName} ${values.lastName} added successfully!`)
-        router.push('/dashboard/leads/private')
-        router.refresh()
+        if (onSuccess) {
+            onSuccess()
+        } else {
+            router.push('/dashboard/leads/private')
+            router.refresh()
+        }
     }
 
     return (
@@ -193,6 +200,26 @@ export function LeadForm() {
                             <FormItem>
                                 <FormLabel className="flex items-center gap-1.5"><Calendar className="h-3.5 w-3.5" /> Date of Birth</FormLabel>
                                 <FormControl><Input type="date" {...field} /></FormControl>
+                                <FormMessage />
+                            </FormItem>
+                        )} />
+                        <FormField control={form.control} name="academicQualification" render={({ field }) => (
+                            <FormItem>
+                                <FormLabel>Academic Qualification</FormLabel>
+                                <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                    <FormControl>
+                                        <SelectTrigger><SelectValue placeholder="Highest qualification..." /></SelectTrigger>
+                                    </FormControl>
+                                    <SelectContent>
+                                        <SelectItem value="high_school">🎓 High School / SLC / SEE</SelectItem>
+                                        <SelectItem value="plus_two">📚 +2 / A-Level / Intermediate</SelectItem>
+                                        <SelectItem value="bachelor">🎓 Bachelor's Degree</SelectItem>
+                                        <SelectItem value="master">🎓 Master's Degree</SelectItem>
+                                        <SelectItem value="phd">🔬 PhD / Doctorate</SelectItem>
+                                        <SelectItem value="diploma">📄 Diploma / Certificate</SelectItem>
+                                        <SelectItem value="other">Other</SelectItem>
+                                    </SelectContent>
+                                </Select>
                                 <FormMessage />
                             </FormItem>
                         )} />

@@ -11,14 +11,15 @@ import {
     Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select"
 import {
-    Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+    Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from "@/components/ui/dialog"
 import {
     Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table"
-import { Users2, Plus, Pencil, Trash2, Search, Mail, Phone } from "lucide-react"
+import { Users2, Plus, Pencil, Search, Mail, Phone, ShieldCheck, Info } from "lucide-react"
 import { toast } from "sonner"
 import { format } from "date-fns"
+import { createEmployee, updateEmployee } from "../actions"
 
 type Employee = {
     id: string
@@ -38,7 +39,15 @@ const roleColors: Record<string, string> = {
     agency_admin: "bg-purple-100 text-purple-700",
     agent: "bg-blue-100 text-blue-700",
     accountant: "bg-emerald-100 text-emerald-700",
+    staff: "bg-amber-100 text-amber-700",
 }
+
+const ROLES = [
+    { value: "agency_admin", label: "Agency Admin" },
+    { value: "agent", label: "Counsellor / Agent" },
+    { value: "accountant", label: "Accountant" },
+    { value: "staff", label: "Staff" },
+]
 
 export default function EmployeesPage() {
     const [employees, setEmployees] = useState<Employee[]>([])
@@ -46,7 +55,11 @@ export default function EmployeesPage() {
     const [search, setSearch] = useState("")
     const [open, setOpen] = useState(false)
     const [editEmp, setEditEmp] = useState<Employee | null>(null)
-    const [form, setForm] = useState({ first_name: "", last_name: "", email: "", phone: "", role: "agent", position: "", department: "", join_date: "", status: "active" })
+    const [saving, setSaving] = useState(false)
+    const [form, setForm] = useState({
+        first_name: "", last_name: "", email: "", phone: "",
+        role: "agent", position: "", department: "", join_date: "", status: "active"
+    })
     const supabase = createClient()
 
     useEffect(() => { fetchEmployees() }, [])
@@ -69,24 +82,47 @@ export default function EmployeesPage() {
         setForm({
             first_name: emp.first_name, last_name: emp.last_name, email: emp.email,
             phone: emp.phone || "", role: emp.role, position: emp.position || "",
-            department: emp.department || "", join_date: emp.join_date || "", status: emp.status,
+            department: emp.department || "", join_date: emp.join_date || "", status: emp.status || "active",
         })
         setOpen(true)
     }
 
     const save = async () => {
         if (!form.first_name || !form.email) { toast.error("Name and email are required"); return }
+        setSaving(true)
+
         if (editEmp) {
-            const { error } = await supabase.from("users").update({
-                first_name: form.first_name, last_name: form.last_name,
-                phone: form.phone, role: form.role, position: form.position,
-                department: form.department, join_date: form.join_date || null,
-            }).eq("id", editEmp.id)
-            if (error) { toast.error("Failed to update"); return }
-            toast.success("Employee updated!")
+            // Update existing employee
+            const fd = new FormData()
+            fd.set('id', editEmp.id)
+            fd.set('role', form.role)
+            fd.set('position', form.position)
+            fd.set('department', form.department)
+            fd.set('phone', form.phone)
+            fd.set('joinDate', form.join_date)
+            fd.set('status', form.status)
+            const result = await updateEmployee(fd)
+            if (result.error) toast.error(result.error)
+            else toast.success("Employee updated!")
         } else {
-            toast.info("New employees are created via the Auth system. You can update existing employees here.")
+            // Create new employee via auth admin API
+            const fd = new FormData()
+            fd.set('firstName', form.first_name)
+            fd.set('lastName', form.last_name)
+            fd.set('email', form.email)
+            fd.set('phone', form.phone)
+            fd.set('role', form.role)
+            fd.set('position', form.position)
+            fd.set('department', form.department)
+            fd.set('joinDate', form.join_date)
+            const result = await createEmployee(fd)
+            if (result.error) toast.error(result.error)
+            else {
+                toast.success("Employee created! They'll receive a password reset email to set their password.")
+            }
         }
+
+        setSaving(false)
         setOpen(false)
         fetchEmployees()
     }
@@ -104,7 +140,7 @@ export default function EmployeesPage() {
                     <h2 className="text-2xl font-bold tracking-tight text-slate-800 flex items-center gap-2">
                         <Users2 className="h-6 w-6 text-primary" /> Employee Management
                     </h2>
-                    <p className="text-muted-foreground text-sm mt-1">View and manage all employees and their roles.</p>
+                    <p className="text-muted-foreground text-sm mt-1">Manage all employees, their roles and permissions.</p>
                 </div>
                 <Button onClick={openAdd} className="gap-2">
                     <Plus className="h-4 w-4" /> Add Employee
@@ -123,7 +159,7 @@ export default function EmployeesPage() {
                 </CardContent></Card>
                 <Card><CardContent className="p-4">
                     <p className="text-2xl font-bold text-blue-600">{employees.filter(e => e.role === "agent").length}</p>
-                    <p className="text-xs text-muted-foreground">Agents</p>
+                    <p className="text-xs text-muted-foreground">Counsellors</p>
                 </CardContent></Card>
                 <Card><CardContent className="p-4">
                     <p className="text-2xl font-bold text-purple-600">{employees.filter(e => e.role === "agency_admin" || e.role === "super_admin").length}</p>
@@ -134,7 +170,7 @@ export default function EmployeesPage() {
             {/* Search */}
             <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input className="pl-9" placeholder="Search employees..." value={search} onChange={e => setSearch(e.target.value)} />
+                <Input className="pl-9" placeholder="Search by name, email, position..." value={search} onChange={e => setSearch(e.target.value)} />
             </div>
 
             <Card className="shadow-sm overflow-hidden">
@@ -172,12 +208,17 @@ export default function EmployeesPage() {
                                                 <p className="text-xs text-muted-foreground flex items-center gap-1">
                                                     <Mail className="h-3 w-3" />{emp.email}
                                                 </p>
+                                                {emp.phone && (
+                                                    <p className="text-xs text-muted-foreground flex items-center gap-1">
+                                                        <Phone className="h-3 w-3" />{emp.phone}
+                                                    </p>
+                                                )}
                                             </div>
                                         </div>
                                     </TableCell>
                                     <TableCell>
                                         <Badge className={`text-[10px] capitalize ${roleColors[emp.role] || "bg-slate-100 text-slate-600"}`}>
-                                            {emp.role?.replace("_", " ")}
+                                            {emp.role?.replace(/_/g, " ")}
                                         </Badge>
                                     </TableCell>
                                     <TableCell className="text-sm">{emp.position || <span className="text-muted-foreground italic">Not set</span>}</TableCell>
@@ -197,23 +238,39 @@ export default function EmployeesPage() {
                 </CardContent>
             </Card>
 
+            {/* Create / Edit Dialog */}
             <Dialog open={open} onOpenChange={setOpen}>
-                <DialogContent>
-                    <DialogHeader><DialogTitle>{editEmp ? "Edit Employee" : "Add Employee"}</DialogTitle></DialogHeader>
+                <DialogContent className="max-w-lg">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            {editEmp ? <Pencil className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+                            {editEmp ? "Edit Employee" : "Add New Employee"}
+                        </DialogTitle>
+                        {!editEmp && (
+                            <DialogDescription className="flex items-start gap-2 text-sm bg-blue-50 border border-blue-200 rounded-lg p-3 mt-2 text-blue-800">
+                                <Info className="h-4 w-4 shrink-0 mt-0.5" />
+                                The employee will receive a password reset email to set their own password and can log in immediately.
+                            </DialogDescription>
+                        )}
+                    </DialogHeader>
                     <div className="space-y-4 py-2">
                         <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-1.5">
                                 <Label>First Name *</Label>
-                                <Input value={form.first_name} onChange={e => setForm({ ...form, first_name: e.target.value })} />
+                                <Input value={form.first_name} disabled={!!editEmp} onChange={e => setForm({ ...form, first_name: e.target.value })} />
                             </div>
                             <div className="space-y-1.5">
                                 <Label>Last Name</Label>
-                                <Input value={form.last_name} onChange={e => setForm({ ...form, last_name: e.target.value })} />
+                                <Input value={form.last_name} disabled={!!editEmp} onChange={e => setForm({ ...form, last_name: e.target.value })} />
                             </div>
                         </div>
                         <div className="space-y-1.5">
                             <Label>Email *</Label>
                             <Input type="email" value={form.email} disabled={!!editEmp} onChange={e => setForm({ ...form, email: e.target.value })} />
+                        </div>
+                        <div className="space-y-1.5">
+                            <Label>Phone</Label>
+                            <Input value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} placeholder="+977-..." />
                         </div>
                         <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-1.5">
@@ -221,10 +278,9 @@ export default function EmployeesPage() {
                                 <Select value={form.role} onValueChange={v => setForm({ ...form, role: v })}>
                                     <SelectTrigger><SelectValue /></SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="super_admin">Super Admin</SelectItem>
-                                        <SelectItem value="agency_admin">Agency Admin</SelectItem>
-                                        <SelectItem value="agent">Agent</SelectItem>
-                                        <SelectItem value="accountant">Accountant</SelectItem>
+                                        {ROLES.map(r => (
+                                            <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
+                                        ))}
                                     </SelectContent>
                                 </Select>
                             </div>
@@ -243,10 +299,24 @@ export default function EmployeesPage() {
                                 <Input type="date" value={form.join_date} onChange={e => setForm({ ...form, join_date: e.target.value })} />
                             </div>
                         </div>
+                        {editEmp && (
+                            <div className="space-y-1.5">
+                                <Label>Status</Label>
+                                <Select value={form.status} onValueChange={v => setForm({ ...form, status: v })}>
+                                    <SelectTrigger><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="active">Active</SelectItem>
+                                        <SelectItem value="inactive">Inactive</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        )}
                     </div>
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-                        <Button onClick={save}>{editEmp ? "Update" : "Add Employee"}</Button>
+                        <Button onClick={save} disabled={saving}>
+                            {saving ? "Saving..." : editEmp ? "Update Employee" : "Create Employee"}
+                        </Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
