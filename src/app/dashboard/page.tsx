@@ -11,6 +11,7 @@ import { Calendar } from "@/components/ui/calendar"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import Link from "next/link"
+import { AddEventDialog } from "@/components/dashboard/events/add-event-dialog"
 
 export default async function DashboardPage() {
     const supabase = await createClient()
@@ -34,6 +35,19 @@ export default async function DashboardPage() {
     // ── STUDENT: should never reach here (middleware redirects them), but just in case
     if (role === 'student') redirect('/student-portal')
 
+    // Fetch upcoming events for the agency
+    let upcomingEvents = []
+    if (profile?.agency_id) {
+        const { data: events } = await supabase
+            .from('calendar_events')
+            .select('*')
+            .eq('agency_id', profile.agency_id)
+            .gte('start_at', new Date().toISOString())
+            .order('start_at', { ascending: true })
+            .limit(5)
+        upcomingEvents = events || []
+    }
+
     // ── ACCOUNTANT dashboard
     if (role === 'accountant') {
         const { data: invoices } = await supabase.from('invoices').select('amount, status, created_at')
@@ -56,35 +70,118 @@ export default async function DashboardPage() {
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     {[
-                        { title: "TOTAL REVENUE", value: `$${totalRevenue.toLocaleString()}`, icon: DollarSign, color: "text-emerald-500", bg: "bg-emerald-500/10", href: "/dashboard/finances" },
-                        { title: "THIS MONTH", value: `$${thisMonthRevenue.toLocaleString()}`, icon: TrendingUp, color: "text-blue-500", bg: "bg-blue-500/10", href: "/dashboard/finances" },
-                        { title: "PENDING INVOICES", value: String(pending), icon: FileText, color: "text-amber-500", bg: "bg-amber-500/10", href: "/dashboard/finances" },
+                        { title: "TOTAL REVENUE", value: `$${totalRevenue.toLocaleString()}`, icon: DollarSign, href: "/dashboard/finances" },
+                        { title: "THIS MONTH", value: `$${thisMonthRevenue.toLocaleString()}`, icon: TrendingUp, href: "/dashboard/finances" },
+                        { title: "PENDING INVOICES", value: String(pending), icon: FileText, href: "/dashboard/finances" },
                     ].map((stat, i) => (
                         <Link key={i} href={stat.href}>
-                            <Card className="shadow-sm hover:shadow-md transition-all cursor-pointer group border-slate-200">
-                                <CardContent className="p-6 flex items-center gap-4">
-                                    <div className={`p-3 rounded-full ${stat.bg} ${stat.color}`}>
-                                        <stat.icon className="h-6 w-6" />
+                            <Card className="shadow-none border border-slate-200 hover:border-slate-300 transition-all cursor-pointer group rounded-xl">
+                                <CardContent className="p-5 flex flex-col gap-3">
+                                    <div className="flex justify-between items-center text-slate-500">
+                                        <p className="text-[11px] font-semibold uppercase tracking-wider">{stat.title}</p>
+                                        <stat.icon className="h-4 w-4 text-slate-400 group-hover:text-slate-600 transition-colors" />
                                     </div>
-                                    <div className="flex-1">
-                                        <p className="text-xs font-semibold text-muted-foreground uppercase">{stat.title}</p>
-                                        <h4 className="text-2xl font-bold">{stat.value}</h4>
+                                    <div className="flex items-end justify-between">
+                                        <h4 className="text-3xl font-bold tracking-tight text-slate-800">{stat.value}</h4>
+                                        <ArrowUpRight className="h-4 w-4 text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity mb-1" />
                                     </div>
-                                    <ArrowUpRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
                                 </CardContent>
                             </Card>
                         </Link>
                     ))}
                 </div>
 
-                <div className="grid lg:grid-cols-2 gap-6">
-                    <Card className="shadow-sm">
+                {/* Bottom Widgets Row */}
+                <div className="grid lg:grid-cols-3 gap-6 pb-12">
+                    {/* Calendar & Events */}
+                    <Card className="shadow-none border border-slate-200 rounded-xl flex flex-col">
+                        <CardHeader className="py-4 border-b flex flex-row items-center justify-between">
+                            <CardTitle className="text-[11px] font-semibold tracking-wider uppercase text-slate-500">Calendar & Events</CardTitle>
+                        </CardHeader>
+                        <CardContent className="p-4 flex flex-col gap-4">
+                            <div className="flex justify-center">
+                                <Calendar
+                                    mode="single"
+                                    selected={today}
+                                    className="bg-transparent pointer-events-none"
+                                    classNames={{
+                                        day_selected: "bg-slate-800 text-white font-medium",
+                                        day_today: "bg-slate-100 text-slate-900 font-bold",
+                                    }}
+                                />
+                            </div>
+
+                            <div className="pt-4 border-t">
+                                <h4 className="text-xs font-semibold uppercase text-slate-500 mb-3">Upcoming Events</h4>
+                                {!upcomingEvents || upcomingEvents.length === 0 ? (
+                                    <p className="text-xs text-muted-foreground text-center py-2">No upcoming events.</p>
+                                ) : (
+                                    <div className="space-y-3">
+                                        {upcomingEvents.map(evt => (
+                                            <div key={evt.id} className="flex gap-3 items-start">
+                                                <div className="w-2 rounded-full mt-1.5 h-2 shrink-0" style={{ backgroundColor: evt.color || '#6366f1' }} />
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="text-sm font-medium text-slate-700 truncate">{evt.title}</p>
+                                                    <p className="text-xs text-muted-foreground">{format(new Date(evt.start_at), "MMM d, h:mm a")}</p>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    {/* Pending Invoices Reminder */}
+                    <Card className="shadow-none border border-slate-200 rounded-xl flex flex-col">
+                        <CardHeader className="py-4 border-b flex flex-row items-center justify-between">
+                            <CardTitle className="text-[11px] font-semibold tracking-wider uppercase text-slate-500">Action Needed</CardTitle>
+                            <Link href="/dashboard/finances"><Button variant="ghost" size="sm" className="h-6 text-[10px] uppercase text-indigo-600 hover:bg-indigo-50">View All</Button></Link>
+                        </CardHeader>
+                        <CardContent className="p-0 flex-1 flex flex-col">
+                            <div className="flex-1 flex flex-col justify-center items-center text-center p-6 text-slate-500">
+                                {pending > 0 ? (
+                                    <>
+                                        <div className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center mb-3">
+                                            <FileText className="w-6 h-6 text-amber-600" strokeWidth={1.5} />
+                                        </div>
+                                        <p className="text-sm font-medium text-slate-700">{pending} Pending {pending === 1 ? 'Invoice' : 'Invoices'}</p>
+                                        <p className="text-xs mt-1">Review and send reminders.</p>
+                                    </>
+                                ) : (
+                                    <>
+                                        <div className="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center mb-3">
+                                            <CheckSquare className="w-6 h-6 text-emerald-600" strokeWidth={1.5} />
+                                        </div>
+                                        <p className="text-sm font-medium text-slate-700">All caught up!</p>
+                                        <p className="text-xs mt-1">No pending invoices.</p>
+                                    </>
+                                )}
+                                <Link href="/dashboard/finances">
+                                    <Button variant="outline" size="sm" className="mt-4 text-xs h-8">Go to Finances</Button>
+                                </Link>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    {/* Quick Access */}
+                    <Card className="shadow-none border border-slate-200 rounded-xl flex flex-col">
                         <CardHeader className="py-4 border-b">
-                            <CardTitle className="text-sm font-bold text-primary uppercase">Quick Actions</CardTitle>
+                            <CardTitle className="text-[11px] font-semibold tracking-wider uppercase text-slate-500">Quick Actions</CardTitle>
                         </CardHeader>
                         <CardContent className="p-4 space-y-3">
-                            <Link href="/dashboard/finances"><Button variant="outline" className="w-full justify-start gap-2 h-10"><FileText className="w-4 h-4 text-emerald-500" /> Invoices & Receipts</Button></Link>
-                            <Link href="/dashboard/settings/cash-received"><Button variant="outline" className="w-full justify-start gap-2 h-10 mt-2"><DollarSign className="w-4 h-4 text-blue-500" /> Cash Received Log</Button></Link>
+                            <Link href="/dashboard/finances">
+                                <Button variant="outline" className="w-full justify-start gap-3 h-11 border-slate-200 hover:border-emerald-200 hover:bg-emerald-50/50 transition-colors text-slate-600">
+                                    <div className="w-6 h-6 rounded bg-emerald-100 flex items-center justify-center"><FileText className="w-3.5 h-3.5 text-emerald-600" /></div>
+                                    <span className="font-medium text-sm">Invoices & Receipts</span>
+                                </Button>
+                            </Link>
+                            <Link href="/dashboard/settings/cash-received">
+                                <Button variant="outline" className="w-full justify-start gap-3 h-11 border-slate-200 hover:border-blue-200 hover:bg-blue-50/50 transition-colors text-slate-600">
+                                    <div className="w-6 h-6 rounded bg-blue-100 flex items-center justify-center"><DollarSign className="w-3.5 h-3.5 text-blue-600" /></div>
+                                    <span className="font-medium text-sm">Cash Received Log</span>
+                                </Button>
+                            </Link>
                         </CardContent>
                     </Card>
                 </div>
@@ -94,12 +191,13 @@ export default async function DashboardPage() {
 
     // ── SUPER ADMIN / AGENCY ADMIN dashboard
     if (role === 'super_admin' || role === 'agency_admin') {
-        const [leadsRes, appsRes, callsRes, teamRes, revenueRes] = await Promise.all([
+        const [leadsRes, appsRes, callsRes, teamRes, revenueRes, upcomingTasksRes] = await Promise.all([
             supabase.from('leads').select('id', { count: 'exact', head: true }),
             supabase.from('applications').select('id', { count: 'exact', head: true }),
             supabase.from('activities').select('id', { count: 'exact', head: true }).eq('type', 'call'),
             supabase.from('users').select('id', { count: 'exact', head: true }),
             supabase.from('invoices').select('amount, status'),
+            supabase.from('tasks').select('id, title, due_date, priority, status').eq('agency_id', profile?.agency_id).neq('status', 'done').order('due_date', { ascending: true }).limit(5),
         ])
 
         const totalRevenue = revenueRes.data?.filter(i => i.status === 'paid').reduce((s, i) => s + (i.amount || 0), 0) ?? 0
@@ -111,7 +209,7 @@ export default async function DashboardPage() {
             .order('created_at', { ascending: false })
             .limit(10)
 
-        // Agent performance
+        // Agent performance — single batch query instead of N+1 loop
         const { data: agents } = await supabase
             .from('users')
             .select('id, first_name, last_name, role, position')
@@ -120,22 +218,23 @@ export default async function DashboardPage() {
             .limit(8)
 
         let agentStats: any[] = []
-        if (agents) {
-            for (const agent of agents.slice(0, 6)) {
-                const { count } = await supabase
-                    .from('leads')
-                    .select('id', { count: 'exact', head: true })
-                    .eq('owner_id', agent.id)
-                agentStats.push({ ...agent, leadCount: count ?? 0 })
-            }
+        if (agents && agents.length > 0) {
+            const agentIds = agents.slice(0, 6).map(a => a.id)
+            const { data: agentLeads } = await supabase
+                .from('leads')
+                .select('owner_id')
+                .in('owner_id', agentIds)
+            const countMap: Record<string, number> = {}
+            agentLeads?.forEach(l => { countMap[l.owner_id] = (countMap[l.owner_id] || 0) + 1 })
+            agentStats = agents.slice(0, 6).map(a => ({ ...a, leadCount: countMap[a.id] ?? 0 }))
         }
 
         const stats = [
-            { title: "TEAM MEMBERS", value: String(teamRes.count ?? 0), icon: Users, color: "text-emerald-500", bg: "bg-emerald-500/10", href: "/dashboard/settings/employees" },
-            { title: "TOTAL LEADS", value: String(leadsRes.count ?? 0), icon: TrendingUp, color: "text-purple-500", bg: "bg-purple-500/10", href: "/dashboard/leads/all" },
-            { title: "APPLICATIONS", value: String(appsRes.count ?? 0), icon: Briefcase, color: "text-indigo-500", bg: "bg-indigo-500/10", href: "/dashboard/applications/offers" },
-            { title: "CALL LOGS", value: String(callsRes.count ?? 0), icon: Phone, color: "text-blue-500", bg: "bg-blue-500/10", href: "/dashboard/calls" },
-            { title: "REVENUE", value: `$${totalRevenue.toLocaleString()}`, icon: DollarSign, color: "text-teal-500", bg: "bg-teal-500/10", href: "/dashboard/finances" },
+            { title: "TEAM MEMBERS", value: String(teamRes.count ?? 0), icon: Users, href: "/dashboard/settings/employees" },
+            { title: "TOTAL LEADS", value: String(leadsRes.count ?? 0), icon: TrendingUp, href: "/dashboard/leads/all" },
+            { title: "APPLICATIONS", value: String(appsRes.count ?? 0), icon: Briefcase, href: "/dashboard/applications/offers" },
+            { title: "CALL LOGS", value: String(callsRes.count ?? 0), icon: Phone, href: "/dashboard/calls" },
+            { title: "REVENUE", value: `$${totalRevenue.toLocaleString()}`, icon: DollarSign, href: "/dashboard/finances" },
         ]
 
         return (
@@ -160,15 +259,13 @@ export default async function DashboardPage() {
                 <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                     {stats.map((stat, i) => (
                         <Link key={i} href={stat.href}>
-                            <Card className="shadow-sm border-slate-200 hover:border-primary/50 hover:shadow-md transition-all cursor-pointer group">
-                                <CardContent className="p-4 flex items-center gap-3">
-                                    <div className={`p-2.5 rounded-full ${stat.bg} ${stat.color}`}>
-                                        <stat.icon className="h-5 w-5" />
+                            <Card className="shadow-none border border-slate-200 hover:border-slate-300 transition-all cursor-pointer group rounded-xl">
+                                <CardContent className="p-4 flex flex-col gap-2">
+                                    <div className="flex justify-between items-center text-slate-500">
+                                        <p className="text-[10px] font-semibold uppercase tracking-wider">{stat.title}</p>
+                                        <stat.icon className="h-4 w-4 text-slate-400 group-hover:text-slate-600 transition-colors" />
                                     </div>
-                                    <div className="flex-1 min-w-0">
-                                        <p className="text-[10px] font-semibold text-muted-foreground uppercase truncate">{stat.title}</p>
-                                        <h4 className="text-xl font-bold">{stat.value}</h4>
-                                    </div>
+                                    <h4 className="text-2xl font-bold tracking-tight text-slate-800">{stat.value}</h4>
                                 </CardContent>
                             </Card>
                         </Link>
@@ -188,13 +285,13 @@ export default async function DashboardPage() {
                     <CardContent className="p-0">
                         <Table>
                             <TableHeader>
-                                <TableRow className="bg-indigo-600 hover:bg-indigo-600">
-                                    <TableHead className="text-white">#</TableHead>
-                                    <TableHead className="text-white">Lead</TableHead>
-                                    <TableHead className="text-white">Status</TableHead>
-                                    <TableHead className="text-white">Agent</TableHead>
-                                    <TableHead className="text-white">Visibility</TableHead>
-                                    <TableHead className="text-white">Created</TableHead>
+                                <TableRow className="border-b border-border bg-transparent hover:bg-transparent">
+                                    <TableHead className="text-[11px] uppercase tracking-wider font-semibold text-slate-500">#</TableHead>
+                                    <TableHead className="text-[11px] uppercase tracking-wider font-semibold text-slate-500">Lead</TableHead>
+                                    <TableHead className="text-[11px] uppercase tracking-wider font-semibold text-slate-500">Status</TableHead>
+                                    <TableHead className="text-[11px] uppercase tracking-wider font-semibold text-slate-500">Agent</TableHead>
+                                    <TableHead className="text-[11px] uppercase tracking-wider font-semibold text-slate-500">Visibility</TableHead>
+                                    <TableHead className="text-[11px] uppercase tracking-wider font-semibold text-slate-500">Created</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -236,12 +333,12 @@ export default async function DashboardPage() {
                         <CardContent className="p-0">
                             <Table>
                                 <TableHeader>
-                                    <TableRow className="bg-slate-50">
-                                        <TableHead>#</TableHead>
-                                        <TableHead>Agent</TableHead>
-                                        <TableHead>Position</TableHead>
-                                        <TableHead>Leads Owned</TableHead>
-                                        <TableHead>Performance</TableHead>
+                                    <TableRow className="border-b border-border bg-transparent hover:bg-transparent">
+                                        <TableHead className="text-[11px] uppercase tracking-wider font-semibold text-slate-500">#</TableHead>
+                                        <TableHead className="text-[11px] uppercase tracking-wider font-semibold text-slate-500">Agent</TableHead>
+                                        <TableHead className="text-[11px] uppercase tracking-wider font-semibold text-slate-500">Position</TableHead>
+                                        <TableHead className="text-[11px] uppercase tracking-wider font-semibold text-slate-500">Leads Owned</TableHead>
+                                        <TableHead className="text-[11px] uppercase tracking-wider font-semibold text-slate-500">Performance</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
@@ -279,55 +376,135 @@ export default async function DashboardPage() {
                     </Card>
                 )}
 
-                {/* Quick Actions */}
+                {/* Additional Widgets Row */}
                 <div className="grid lg:grid-cols-3 gap-6 pb-12">
-                    <Card className="lg:col-span-2 shadow-sm border-slate-200">
-                        <CardHeader className="py-4 border-b">
-                            <CardTitle className="text-sm font-bold uppercase">{format(today, "MMMM yyyy")}</CardTitle>
+                    {/* Calendar & Events */}
+                    <Card className="shadow-none border border-slate-200 rounded-xl flex flex-col">
+                        <CardHeader className="py-4 border-b flex flex-row items-center justify-between">
+                            <CardTitle className="text-[11px] font-semibold tracking-wider uppercase text-slate-500">Calendar & Events</CardTitle>
+                            <AddEventDialog />
                         </CardHeader>
-                        <CardContent className="p-6 flex justify-center">
-                            <Calendar
-                                mode="single"
-                                selected={today}
-                                className="w-full flex"
-                                classNames={{
-                                    months: "flex w-full flex-col sm:flex-row space-y-4 sm:space-x-4 sm:space-y-0",
-                                    month: "space-y-4 w-full",
-                                    table: "w-full border-collapse space-y-1",
-                                    head_row: "flex w-full",
-                                    head_cell: "text-muted-foreground rounded-md w-full font-medium text-[0.8rem]",
-                                    row: "flex w-full mt-2",
-                                    cell: "h-14 w-full text-center text-sm p-1 relative flex items-start justify-end border border-slate-100",
-                                    day: "h-7 w-7 p-0 font-normal aria-selected:opacity-100 rounded-full flex items-center justify-center",
-                                    day_selected: "bg-blue-600 text-white hover:bg-blue-600 hover:text-white",
-                                    day_today: "bg-accent text-accent-foreground",
-                                }}
-                            />
+                        <CardContent className="p-4 flex flex-col gap-4">
+                            <div className="flex justify-center">
+                                <Calendar
+                                    mode="single"
+                                    selected={today}
+                                    className="bg-transparent pointer-events-none"
+                                    classNames={{
+                                        day_selected: "bg-slate-800 text-white font-medium",
+                                        day_today: "bg-slate-100 text-slate-900 font-bold",
+                                    }}
+                                />
+                            </div>
+
+                            <div className="pt-4 border-t">
+                                <h4 className="text-xs font-semibold uppercase text-slate-500 mb-3">Upcoming Events</h4>
+                                {!upcomingEvents || upcomingEvents.length === 0 ? (
+                                    <p className="text-xs text-muted-foreground text-center py-2">No upcoming events.</p>
+                                ) : (
+                                    <div className="space-y-3">
+                                        {upcomingEvents.map(evt => (
+                                            <div key={evt.id} className="flex gap-3 items-start">
+                                                <div className="w-2 rounded-full mt-1.5 h-2 shrink-0" style={{ backgroundColor: evt.color || '#6366f1' }} />
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="text-sm font-medium text-slate-700 truncate">{evt.title}</p>
+                                                    <p className="text-xs text-muted-foreground">{format(new Date(evt.start_at), "MMM d, h:mm a")}</p>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
                         </CardContent>
                     </Card>
-                    <div className="space-y-4">
-                        <Card className="shadow-sm">
-                            <CardHeader className="py-4 border-b">
-                                <CardTitle className="text-sm font-bold text-primary uppercase">Admin Actions</CardTitle>
-                            </CardHeader>
-                            <CardContent className="p-4 space-y-2">
-                                <Link href="/dashboard/leads/all"><Button variant="outline" className="w-full justify-start gap-2 h-10"><Users className="w-4 h-4 text-purple-500" /> All Leads</Button></Link>
-                                <Link href="/dashboard/settings/employees"><Button variant="outline" className="w-full justify-start gap-2 h-10"><UserCheck className="w-4 h-4 text-blue-500" /> Manage Employees</Button></Link>
-                                <Link href="/dashboard/reports"><Button variant="outline" className="w-full justify-start gap-2 h-10"><TrendingUp className="w-4 h-4 text-emerald-500" /> Reports</Button></Link>
-                                <Link href="/dashboard/finances"><Button variant="outline" className="w-full justify-start gap-2 h-10"><DollarSign className="w-4 h-4 text-teal-500" /> Finances</Button></Link>
-                            </CardContent>
-                        </Card>
-                    </div>
+
+                    {/* Pending Tasks / Quick Reminders */}
+                    <Card className="shadow-none border border-slate-200 rounded-xl flex flex-col">
+                        <CardHeader className="py-4 border-b flex flex-row items-center justify-between">
+                            <CardTitle className="text-[11px] font-semibold tracking-wider uppercase text-slate-500">Upcoming Tasks</CardTitle>
+                            <Link href="/dashboard/tasks"><Button variant="ghost" size="sm" className="h-6 text-[10px] uppercase text-indigo-600 hover:bg-indigo-50">View All</Button></Link>
+                        </CardHeader>
+                        <CardContent className="p-0 flex-1 flex flex-col">
+                            {!upcomingTasksRes.data || upcomingTasksRes.data.length === 0 ? (
+                                <div className="flex-1 flex flex-col justify-center items-center text-center p-6 text-slate-500">
+                                    <CheckSquare className="w-8 h-8 mb-3 text-slate-300" strokeWidth={1.5} />
+                                    <p className="text-sm font-medium text-slate-700">All caught up!</p>
+                                    <p className="text-xs mt-1">No pending tasks right now.</p>
+                                    <Link href="/dashboard/tasks">
+                                        <Button variant="outline" size="sm" className="mt-4 text-xs h-8">Add Task</Button>
+                                    </Link>
+                                </div>
+                            ) : (
+                                <div className="divide-y">
+                                    {upcomingTasksRes.data.map((task: any) => (
+                                        <div key={task.id} className="flex items-start gap-3 px-4 py-3">
+                                            <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${task.priority === 'high' ? 'bg-red-500' :
+                                                    task.priority === 'medium' ? 'bg-amber-500' : 'bg-slate-300'
+                                                }`} />
+                                            <div className="flex-1 min-w-0">
+                                                <p className="text-sm font-medium text-slate-700 truncate">{task.title}</p>
+                                                {task.due_date && (
+                                                    <p className="text-xs text-muted-foreground">
+                                                        Due {format(new Date(task.due_date), 'MMM d')}
+                                                    </p>
+                                                )}
+                                            </div>
+                                            <Badge variant="secondary" className="text-[10px] shrink-0 capitalize">{task.priority}</Badge>
+                                        </div>
+                                    ))}
+                                    <div className="px-4 py-3">
+                                        <Link href="/dashboard/tasks">
+                                            <Button variant="ghost" size="sm" className="h-7 text-xs w-full">View All Tasks</Button>
+                                        </Link>
+                                    </div>
+                                </div>
+                            )}
+                        </CardContent>
+                    </Card>
+
+                    {/* Quick Access */}
+                    <Card className="shadow-none border border-slate-200 rounded-xl flex flex-col">
+                        <CardHeader className="py-4 border-b">
+                            <CardTitle className="text-[11px] font-semibold tracking-wider uppercase text-slate-500">Quick Access</CardTitle>
+                        </CardHeader>
+                        <CardContent className="p-4 space-y-3">
+                            <Link href="/dashboard/leads/new">
+                                <Button variant="outline" className="w-full justify-start gap-3 h-11 border-slate-200 hover:border-indigo-200 hover:bg-indigo-50/50 transition-colors text-slate-600">
+                                    <div className="w-6 h-6 rounded bg-indigo-100 flex items-center justify-center"><Users className="w-3.5 h-3.5 text-indigo-600" /></div>
+                                    <span className="font-medium text-sm">Add New Lead</span>
+                                </Button>
+                            </Link>
+                            <Link href="/dashboard/settings/employees">
+                                <Button variant="outline" className="w-full justify-start gap-3 h-11 border-slate-200 hover:border-blue-200 hover:bg-blue-50/50 transition-colors text-slate-600">
+                                    <div className="w-6 h-6 rounded bg-blue-100 flex items-center justify-center"><UserCheck className="w-3.5 h-3.5 text-blue-600" /></div>
+                                    <span className="font-medium text-sm">Manage Employees</span>
+                                </Button>
+                            </Link>
+                            <Link href="/dashboard/reports">
+                                <Button variant="outline" className="w-full justify-start gap-3 h-11 border-slate-200 hover:border-emerald-200 hover:bg-emerald-50/50 transition-colors text-slate-600">
+                                    <div className="w-6 h-6 rounded bg-emerald-100 flex items-center justify-center"><TrendingUp className="w-3.5 h-3.5 text-emerald-600" /></div>
+                                    <span className="font-medium text-sm">View Reports</span>
+                                </Button>
+                            </Link>
+                            <Link href="/dashboard/finances">
+                                <Button variant="outline" className="w-full justify-start gap-3 h-11 border-slate-200 hover:border-amber-200 hover:bg-amber-50/50 transition-colors text-slate-600">
+                                    <div className="w-6 h-6 rounded bg-amber-100 flex items-center justify-center"><DollarSign className="w-3.5 h-3.5 text-amber-600" /></div>
+                                    <span className="font-medium text-sm">Billing & Finances</span>
+                                </Button>
+                            </Link>
+                        </CardContent>
+                    </Card>
                 </div>
             </div>
         )
     }
 
     // ── AGENT dashboard (default for 'agent' role)
-    const [leadsRes, appsRes, callsRes] = await Promise.all([
+    const [leadsRes, appsRes, callsRes, agentTasksRes] = await Promise.all([
         supabase.from('leads').select('id', { count: 'exact', head: true }).eq('owner_id', user.id),
         supabase.from('applications').select('id', { count: 'exact', head: true }),
         supabase.from('activities').select('id', { count: 'exact', head: true }).eq('type', 'call').eq('user_id', user.id),
+        supabase.from('tasks').select('id, title, due_date, priority, status').eq('assigned_to', user.id).neq('status', 'done').order('due_date', { ascending: true }).limit(5),
     ])
 
     // My private leads (today's follow-ups)
@@ -348,10 +525,10 @@ export default async function DashboardPage() {
         .limit(5)
 
     const agentStats = [
-        { title: "MY LEADS", value: String(leadsRes.count ?? 0), icon: Users, color: "text-purple-500", bg: "bg-purple-500/10", href: "/dashboard/leads/private" },
-        { title: "APPLICATIONS", value: String(appsRes.count ?? 0), icon: Briefcase, color: "text-indigo-500", bg: "bg-indigo-500/10", href: "/dashboard/applications/offers" },
-        { title: "MY CALLS", value: String(callsRes.count ?? 0), icon: Phone, color: "text-blue-500", bg: "bg-blue-500/10", href: "/dashboard/calls" },
-        { title: "TASKS", value: "—", icon: CheckSquare, color: "text-emerald-500", bg: "bg-emerald-500/10", href: "/dashboard/tasks" },
+        { title: "MY LEADS", value: String(leadsRes.count ?? 0), icon: Users, href: "/dashboard/leads/private" },
+        { title: "APPLICATIONS", value: String(appsRes.count ?? 0), icon: Briefcase, href: "/dashboard/applications/offers" },
+        { title: "MY CALLS", value: String(callsRes.count ?? 0), icon: Phone, href: "/dashboard/calls" },
+        { title: "TASKS", value: "—", icon: CheckSquare, href: "/dashboard/tasks" },
     ]
 
     return (
@@ -376,16 +553,16 @@ export default async function DashboardPage() {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 {agentStats.map((stat, i) => (
                     <Link key={i} href={stat.href}>
-                        <Card className="shadow-sm border-slate-200 hover:border-primary/50 hover:shadow-md transition-all cursor-pointer group">
-                            <CardContent className="p-4 flex items-center gap-4">
-                                <div className={`p-3 rounded-full ${stat.bg} ${stat.color}`}>
-                                    <stat.icon className="h-6 w-6" />
+                        <Card className="shadow-none border border-slate-200 hover:border-slate-300 transition-all cursor-pointer group rounded-xl">
+                            <CardContent className="p-5 flex flex-col gap-3">
+                                <div className="flex justify-between items-center text-slate-500">
+                                    <p className="text-[11px] font-semibold uppercase tracking-wider">{stat.title}</p>
+                                    <stat.icon className="h-4 w-4 text-slate-400 group-hover:text-slate-600 transition-colors" />
                                 </div>
-                                <div className="flex-1">
-                                    <p className="text-xs font-semibold text-muted-foreground uppercase">{stat.title}</p>
-                                    <h4 className="text-2xl font-bold">{stat.value}</h4>
+                                <div className="flex items-end justify-between">
+                                    <h4 className="text-3xl font-bold tracking-tight text-slate-800">{stat.value}</h4>
+                                    <ArrowUpRight className="h-4 w-4 text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity mb-1" />
                                 </div>
-                                <ArrowUpRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
                             </CardContent>
                         </Card>
                     </Link>
@@ -458,18 +635,124 @@ export default async function DashboardPage() {
                 </Card>
             </div>
 
-            {/* Quick Actions */}
-            <Card className="shadow-sm">
-                <CardHeader className="py-4 border-b">
-                    <CardTitle className="text-sm font-bold text-primary uppercase">Quick Actions</CardTitle>
-                </CardHeader>
-                <CardContent className="p-4 flex flex-wrap gap-3">
-                    <Link href="/dashboard/leads/new"><Button variant="outline" className="gap-2 h-10"><Users className="w-4 h-4 text-purple-500" /> Add New Lead</Button></Link>
-                    <Link href="/dashboard/tasks"><Button variant="outline" className="gap-2 h-10"><CheckSquare className="w-4 h-4 text-emerald-500" /> My Tasks</Button></Link>
-                    <Link href="/dashboard/reminders"><Button variant="outline" className="gap-2 h-10"><Bell className="w-4 h-4 text-amber-500" /> My Reminders</Button></Link>
-                    <Link href="/dashboard/chat"><Button variant="outline" className="gap-2 h-10"><FileText className="w-4 h-4 text-blue-500" /> Open Chat</Button></Link>
-                </CardContent>
-            </Card>
+            {/* Bottom Widgets Row */}
+            <div className="grid lg:grid-cols-3 gap-6 pb-12">
+                {/* Calendar & Events */}
+                <Card className="shadow-none border border-slate-200 rounded-xl flex flex-col">
+                    <CardHeader className="py-4 border-b flex flex-row items-center justify-between">
+                        <CardTitle className="text-[11px] font-semibold tracking-wider uppercase text-slate-500">Calendar & Events</CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-4 flex flex-col gap-4">
+                        <div className="flex justify-center">
+                            <Calendar
+                                mode="single"
+                                selected={today}
+                                className="bg-transparent pointer-events-none"
+                                classNames={{
+                                    day_selected: "bg-slate-800 text-white font-medium",
+                                    day_today: "bg-slate-100 text-slate-900 font-bold",
+                                }}
+                            />
+                        </div>
+
+                        <div className="pt-4 border-t">
+                            <h4 className="text-xs font-semibold uppercase text-slate-500 mb-3">Upcoming Events</h4>
+                            {!upcomingEvents || upcomingEvents.length === 0 ? (
+                                <p className="text-xs text-muted-foreground text-center py-2">No upcoming events.</p>
+                            ) : (
+                                <div className="space-y-3">
+                                    {upcomingEvents.map(evt => (
+                                        <div key={evt.id} className="flex gap-3 items-start">
+                                            <div className="w-2 rounded-full mt-1.5 h-2 shrink-0" style={{ backgroundColor: evt.color || '#6366f1' }} />
+                                            <div className="flex-1 min-w-0">
+                                                <p className="text-sm font-medium text-slate-700 truncate">{evt.title}</p>
+                                                <p className="text-xs text-muted-foreground">{format(new Date(evt.start_at), "MMM d, h:mm a")}</p>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </CardContent>
+                </Card>
+
+                {/* Pending Tasks / Quick Reminders */}
+                <Card className="shadow-none border border-slate-200 rounded-xl flex flex-col">
+                    <CardHeader className="py-4 border-b flex flex-row items-center justify-between">
+                        <CardTitle className="text-[11px] font-semibold tracking-wider uppercase text-slate-500">Upcoming Tasks</CardTitle>
+                        <Link href="/dashboard/tasks"><Button variant="ghost" size="sm" className="h-6 text-[10px] uppercase text-indigo-600 hover:bg-indigo-50">View All</Button></Link>
+                    </CardHeader>
+                    <CardContent className="p-0 flex-1 flex flex-col">
+                        {!agentTasksRes.data || agentTasksRes.data.length === 0 ? (
+                            <div className="flex-1 flex flex-col justify-center items-center text-center p-6 text-slate-500">
+                                <CheckSquare className="w-8 h-8 mb-3 text-slate-300" strokeWidth={1.5} />
+                                <p className="text-sm font-medium text-slate-700">All caught up!</p>
+                                <p className="text-xs mt-1">No pending tasks right now.</p>
+                                <Link href="/dashboard/tasks">
+                                    <Button variant="outline" size="sm" className="mt-4 text-xs h-8">Add Task</Button>
+                                </Link>
+                            </div>
+                        ) : (
+                            <div className="divide-y">
+                                {agentTasksRes.data.map((task: any) => (
+                                    <div key={task.id} className="flex items-start gap-3 px-4 py-3">
+                                        <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${task.priority === 'high' ? 'bg-red-500' :
+                                                task.priority === 'medium' ? 'bg-amber-500' : 'bg-slate-300'
+                                            }`} />
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-sm font-medium text-slate-700 truncate">{task.title}</p>
+                                            {task.due_date && (
+                                                <p className="text-xs text-muted-foreground">
+                                                    Due {format(new Date(task.due_date), 'MMM d')}
+                                                </p>
+                                            )}
+                                        </div>
+                                        <Badge variant="secondary" className="text-[10px] shrink-0 capitalize">{task.priority}</Badge>
+                                    </div>
+                                ))}
+                                <div className="px-4 py-3">
+                                    <Link href="/dashboard/tasks">
+                                        <Button variant="ghost" size="sm" className="h-7 text-xs w-full">View All Tasks</Button>
+                                    </Link>
+                                </div>
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
+
+                {/* Quick Access */}
+                <Card className="shadow-none border border-slate-200 rounded-xl flex flex-col">
+                    <CardHeader className="py-4 border-b">
+                        <CardTitle className="text-[11px] font-semibold tracking-wider uppercase text-slate-500">Quick Actions</CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-4 space-y-3">
+                        <Link href="/dashboard/leads/new">
+                            <Button variant="outline" className="w-full justify-start gap-3 h-11 border-slate-200 hover:border-indigo-200 hover:bg-indigo-50/50 transition-colors text-slate-600">
+                                <div className="w-6 h-6 rounded bg-indigo-100 flex items-center justify-center"><Users className="w-3.5 h-3.5 text-indigo-600" /></div>
+                                <span className="font-medium text-sm">Add New Lead</span>
+                            </Button>
+                        </Link>
+                        <Link href="/dashboard/tasks">
+                            <Button variant="outline" className="w-full justify-start gap-3 h-11 border-slate-200 hover:border-emerald-200 hover:bg-emerald-50/50 transition-colors text-slate-600">
+                                <div className="w-6 h-6 rounded bg-emerald-100 flex items-center justify-center"><CheckSquare className="w-3.5 h-3.5 text-emerald-600" /></div>
+                                <span className="font-medium text-sm">My Tasks</span>
+                            </Button>
+                        </Link>
+                        <Link href="/dashboard/reminders">
+                            <Button variant="outline" className="w-full justify-start gap-3 h-11 border-slate-200 hover:border-amber-200 hover:bg-amber-50/50 transition-colors text-slate-600">
+                                <div className="w-6 h-6 rounded bg-amber-100 flex items-center justify-center"><Bell className="w-3.5 h-3.5 text-amber-600" /></div>
+                                <span className="font-medium text-sm">My Reminders</span>
+                            </Button>
+                        </Link>
+                        <Link href="/dashboard/chat">
+                            <Button variant="outline" className="w-full justify-start gap-3 h-11 border-slate-200 hover:border-blue-200 hover:bg-blue-50/50 transition-colors text-slate-600">
+                                <div className="w-6 h-6 rounded bg-blue-100 flex items-center justify-center"><FileText className="w-3.5 h-3.5 text-blue-600" /></div>
+                                <span className="font-medium text-sm">Open Chat</span>
+                            </Button>
+                        </Link>
+                    </CardContent>
+                </Card>
+            </div>
         </div>
     )
 }

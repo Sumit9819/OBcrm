@@ -14,7 +14,7 @@ import {
 import {
     Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select"
-import { Globe, Lock, MoreHorizontal, Search, Plus, Filter } from "lucide-react"
+import { Globe, Lock, MoreHorizontal, Search, Plus, Filter, LayoutGrid } from "lucide-react"
 import Link from "next/link"
 import { format } from "date-fns"
 import { ImportLeadsDialog } from "@/components/leads/import-leads-dialog"
@@ -58,6 +58,12 @@ export function PrivateLeadsClient({ initialLeads }: { initialLeads: Lead[] }) {
                     </p>
                 </div>
                 <div className="flex items-center gap-2">
+                    <Link href="/dashboard/leads/kanban">
+                        <Button variant="outline" size="sm" className="gap-1.5">
+                            <LayoutGrid className="h-4 w-4" />
+                            Kanban
+                        </Button>
+                    </Link>
                     <ImportLeadsDialog onImported={() => window.location.reload()} />
                     <Link href="/dashboard/leads/new">
                         <Button className="gap-2"><Plus className="h-4 w-4" /> Add Lead</Button>

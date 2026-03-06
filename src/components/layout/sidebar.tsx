@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import { useState } from "react"
+import Link from "next/link"
 import {
     BookOpen,
     ChevronDown,
@@ -26,6 +27,8 @@ import {
     Banknote,
     Mail,
     Coffee,
+    GraduationCap,
+    Kanban,
 } from "lucide-react"
 
 import {
@@ -42,7 +45,7 @@ import {
 
 type NavItem = {
     title: string
-    icon: any
+    icon: React.ComponentType<{ className?: string; strokeWidth?: number; style?: React.CSSProperties }>
     url?: string
     items?: { title: string; url: string }[]
     roles?: string[]
@@ -70,22 +73,22 @@ const navSections: NavSection[] = [
                 ],
                 roles: ["super_admin", "agency_admin", "agent"],
             },
-            // Admin view: see ALL leads across all agents
             {
                 title: "All Agency Leads",
                 icon: Users,
                 items: [
                     { title: "All Leads", url: "/dashboard/leads/all" },
+                    { title: "Kanban Board", url: "/dashboard/leads/kanban" },
                     { title: "Add New Lead", url: "/dashboard/leads/new" },
                 ],
                 roles: ["super_admin", "agency_admin"],
             },
-            // Agent view: only their own leads
             {
                 title: "My Leads",
                 icon: Users,
                 items: [
                     { title: "My Leads", url: "/dashboard/leads/private" },
+                    { title: "Kanban Board", url: "/dashboard/leads/kanban" },
                     { title: "Add New Lead", url: "/dashboard/leads/new" },
                 ],
                 roles: ["agent"],
@@ -94,7 +97,13 @@ const navSections: NavSection[] = [
                 title: "Students",
                 icon: UserCheck,
                 url: "/dashboard/students",
-                roles: ["super_admin", "agency_admin", "staff"],
+                roles: ["super_admin", "agency_admin", "staff", "agent"],
+            },
+            {
+                title: "Learners",
+                icon: GraduationCap,
+                url: "/dashboard/learners",
+                roles: ["super_admin", "agency_admin", "staff", "agent"],
             },
             {
                 title: "Classes & Payments",
@@ -188,6 +197,7 @@ const navSections: NavSection[] = [
                 icon: Settings,
                 items: [
                     { title: "Agency Branding", url: "/dashboard/settings" },
+                    { title: "Branches", url: "/dashboard/settings/branches" },
                     { title: "Integrations", url: "/dashboard/settings/integrations" },
                     { title: "Team Management", url: "/dashboard/settings/users" },
                     { title: "Agent Management", url: "/dashboard/settings/agents" },
@@ -216,47 +226,42 @@ const navSections: NavSection[] = [
                 url: "/dashboard/settings/newsletter",
                 roles: ["super_admin", "agency_admin"],
             },
-            {
-                title: "User Management",
-                icon: UserCog,
-                url: "/dashboard/settings/users",
-                roles: ["super_admin", "agency_admin"],
-            },
         ],
     },
 ]
 
-function CollapsibleNavGroup({ group }: { group: NavItem }) {
+function CollapsibleNavGroup({ group, fg }: { group: NavItem, fg: string }) {
     const [open, setOpen] = useState(false)
 
     return (
-        <SidebarGroup className="px-2 py-0">
+        <SidebarGroup className="px-3 py-0.5">
             <SidebarMenu>
                 <SidebarMenuItem>
                     <SidebarMenuButton
                         onClick={() => setOpen(!open)}
-                        className="hover:bg-primary/5 transition-colors w-full justify-between"
+                        className="hover:bg-white/10 transition-all rounded-md w-full justify-between h-9 group opacity-90 hover:opacity-100"
+                        style={{ color: fg }}
                     >
                         <span className="flex items-center gap-3">
-                            <group.icon className="h-4 w-4 text-muted-foreground" />
-                            <span className="font-medium text-sm">{group.title}</span>
+                            <group.icon className="h-[18px] w-[18px] opacity-70 group-hover:opacity-100 transition-opacity" style={{ color: fg }} strokeWidth={1.5} />
+                            <span className="font-medium text-[13px]">{group.title}</span>
                         </span>
-                        <ChevronDown className={`h-3.5 w-3.5 text-muted-foreground transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
+                        <ChevronDown className={`h-3.5 w-3.5 opacity-50 transition-transform duration-200 ${open ? "rotate-180" : ""}`} style={{ color: fg }} />
                     </SidebarMenuButton>
                 </SidebarMenuItem>
             </SidebarMenu>
 
             <div
-                className={`overflow-hidden transition-all duration-200 ease-in-out ${open ? "max-h-96 opacity-100" : "max-h-0 opacity-0"}`}
+                className={`overflow-hidden transition-all duration-200 ease-in-out ${open ? "max-h-96 opacity-100 mt-1" : "max-h-0 opacity-0"}`}
             >
                 <SidebarGroupContent>
                     <SidebarMenu>
                         {group.items?.map((item) => (
                             <SidebarMenuItem key={item.title}>
-                                <SidebarMenuButton asChild className="pl-11 hover:bg-primary/5 transition-colors">
-                                    <a href={item.url} className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
+                                <SidebarMenuButton asChild className="pl-[2.75rem] h-8 hover:bg-transparent">
+                                    <Link href={item.url} className="text-[13px] font-medium opacity-60 hover:opacity-100 transition-all" style={{ color: fg }}>
                                         {item.title}
-                                    </a>
+                                    </Link>
                                 </SidebarMenuButton>
                             </SidebarMenuItem>
                         ))}
@@ -267,16 +272,16 @@ function CollapsibleNavGroup({ group }: { group: NavItem }) {
     )
 }
 
-function DirectLinkItem({ group }: { group: NavItem }) {
+function DirectLinkItem({ group, fg }: { group: NavItem, fg: string }) {
     return (
-        <SidebarGroup className="px-2 py-0">
+        <SidebarGroup className="px-3 py-0.5">
             <SidebarMenu>
                 <SidebarMenuItem>
-                    <SidebarMenuButton asChild tooltip={group.title} className="hover:bg-primary/5 transition-colors">
-                        <a href={group.url} className="flex items-center gap-3 py-2">
-                            <group.icon className="h-4 w-4 text-muted-foreground" />
-                            <span className="font-medium text-sm">{group.title}</span>
-                        </a>
+                    <SidebarMenuButton asChild tooltip={group.title} className="hover:bg-white/10 transition-all rounded-md h-9 group opacity-90 hover:opacity-100">
+                        <Link href={group.url!} className="flex items-center gap-3" style={{ color: fg }}>
+                            <group.icon className="h-[18px] w-[18px] opacity-70 group-hover:opacity-100 transition-opacity" style={{ color: fg }} strokeWidth={1.5} />
+                            <span className="font-medium text-[13px]">{group.title}</span>
+                        </Link>
                     </SidebarMenuButton>
                 </SidebarMenuItem>
             </SidebarMenu>
@@ -284,24 +289,52 @@ function DirectLinkItem({ group }: { group: NavItem }) {
     )
 }
 
-export function AppSidebar({ userRole, logoUrl, sidebarColor }: { userRole: string, logoUrl?: string, sidebarColor?: string }) {
+export function AppSidebar({
+    userRole,
+    logoUrl,
+    sidebarColor,
+    sidebarForeground,
+    brandName,
+    showBrandName,
+}: {
+    userRole: string
+    logoUrl?: string
+    sidebarColor?: string
+    sidebarForeground?: string
+    brandName?: string
+    showBrandName?: boolean
+}) {
+    const fg = sidebarForeground || 'black'
+
     const filterItems = (items: NavItem[]) =>
         items.filter(item => !item.roles || item.roles.length === 0 || item.roles.includes(userRole))
 
     return (
-        <Sidebar className="border-r border-border/40 transition-colors" style={sidebarColor ? { '--sidebar': sidebarColor, backgroundColor: 'var(--sidebar)' } as React.CSSProperties : undefined}>
+        <Sidebar
+            className="border-r border-border/40 transition-colors"
+            style={sidebarColor ? {
+                '--sidebar': sidebarColor,
+                backgroundColor: sidebarColor,
+            } as React.CSSProperties : undefined}
+        >
             <SidebarHeader className="h-16 border-b px-4 flex justify-center border-border/40">
-                <div className="flex items-center gap-2 font-semibold">
+                <div className="flex items-center gap-2.5 font-semibold min-w-0">
                     {logoUrl ? (
                         <div className="h-8 w-8 shrink-0 overflow-hidden flex items-center justify-center relative rounded-md">
                             <img src={logoUrl} alt="Logo" className="object-contain w-full h-full" />
                         </div>
                     ) : (
                         <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center shrink-0">
-                            <span className="text-primary-foreground font-bold text-lg leading-none">G</span>
+                            <span className="text-primary-foreground font-bold text-lg leading-none">
+                                {(brandName || 'G').charAt(0).toUpperCase()}
+                            </span>
                         </div>
                     )}
-                    <span className="text-xl tracking-tight">GrowthCRM</span>
+                    {showBrandName !== false && (
+                        <span className="text-xl tracking-tight truncate" style={{ color: fg }}>
+                            {brandName || 'GrowthCRM'}
+                        </span>
+                    )}
                 </div>
             </SidebarHeader>
 
@@ -309,15 +342,18 @@ export function AppSidebar({ userRole, logoUrl, sidebarColor }: { userRole: stri
                 {navSections.map((section, sIdx) => (
                     <div key={sIdx}>
                         {section.label && (
-                            <SidebarGroupLabel className="px-4 pt-4 pb-1 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60">
+                            <SidebarGroupLabel
+                                className="px-4 pt-6 pb-2 text-[10px] font-semibold uppercase tracking-wider opacity-40"
+                                style={{ color: fg }}
+                            >
                                 {section.label}
                             </SidebarGroupLabel>
                         )}
                         {filterItems(section.items).map((group, index) =>
                             group.url ? (
-                                <DirectLinkItem key={index} group={group} />
+                                <DirectLinkItem key={index} group={group} fg={fg} />
                             ) : (
-                                <CollapsibleNavGroup key={index} group={group} />
+                                <CollapsibleNavGroup key={index} group={group} fg={fg} />
                             )
                         )}
                     </div>

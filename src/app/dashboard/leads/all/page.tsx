@@ -18,11 +18,12 @@ import {
 } from "@/components/ui/dialog"
 import {
     Search, Users, Globe, UserCheck, CheckSquare, Square, Upload,
-    RefreshCw, UserCog, TrendingUp, Download,
+    RefreshCw, UserCog, TrendingUp, Download, Plus, LayoutGrid,
 } from "lucide-react"
 import { format } from "date-fns"
 import Link from "next/link"
 import { toast } from "sonner"
+import { LeadForm } from "@/components/leads/lead-form"
 
 const statusColors: Record<string, string> = {
     New: "bg-blue-100 text-blue-700",
@@ -68,6 +69,9 @@ export default function AllLeadsPage() {
     const [showCSV, setShowCSV] = useState(false)
     const [csvRows, setCSVRows] = useState<Record<string, string>[]>([])
     const [csvPending, setCSVPending] = useState(false)
+
+    // Add Lead dialog
+    const [showAddLead, setShowAddLead] = useState(false)
 
     const supabase = createClient()
 
@@ -228,6 +232,15 @@ export default function AllLeadsPage() {
                     </p>
                 </div>
                 <div className="flex items-center gap-2">
+                    <Link href="/dashboard/leads/kanban">
+                        <Button variant="outline" size="sm" className="gap-1.5">
+                            <LayoutGrid className="h-4 w-4" />
+                            Kanban
+                        </Button>
+                    </Link>
+                    <Button size="sm" onClick={() => setShowAddLead(true)} className="gap-1.5">
+                        <Plus className="h-4 w-4" /> Add Lead
+                    </Button>
                     <Button variant="outline" size="sm" onClick={() => setShowCSV(true)} className="gap-1.5">
                         <Upload className="h-4 w-4" /> Import CSV
                     </Button>
@@ -404,6 +417,18 @@ export default function AllLeadsPage() {
                     </Table>
                 </CardContent>
             </Card>
+
+            {/* Add Lead Dialog */}
+            <Dialog open={showAddLead} onOpenChange={setShowAddLead}>
+                <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            <Plus className="h-5 w-5" /> Add New Lead
+                        </DialogTitle>
+                    </DialogHeader>
+                    <LeadForm onSuccess={() => { setShowAddLead(false); load() }} />
+                </DialogContent>
+            </Dialog>
 
             {/* CSV Import Dialog */}
             <Dialog open={showCSV} onOpenChange={setShowCSV}>
