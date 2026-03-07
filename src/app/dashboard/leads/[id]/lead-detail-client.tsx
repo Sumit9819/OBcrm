@@ -17,7 +17,7 @@ import {
     ArrowLeft, Phone, Mail, Globe, BookOpen, FileText, Briefcase,
     MoreHorizontal, Edit, MessageSquare, Archive, CheckCircle, Clock,
     UserPlus, CheckSquare, GraduationCap, Plus, Calendar, Flag,
-    Loader2, User, MapPin, PhoneCall, PhoneOff, FlaskConical, AlertTriangle, Send
+    Loader2, User, MapPin, PhoneCall, PhoneOff, FlaskConical, AlertTriangle, Send, History
 } from "lucide-react"
 import { format } from "date-fns"
 import { toast } from "sonner"
@@ -314,7 +314,7 @@ export function LeadDetailClient({ lead, activities, documents, applications, ta
             </div>
 
             {/* \u2500\u2500 3-Column Layout \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */}
-            <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr_320px] gap-6 items-start mt-6">
+            <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-8 items-start mt-6">
 
                 {/* \u2500\u2500 Left Column: Identity Profile \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */}
                 <div className="space-y-4 flex flex-col sm:sticky sm:top-6">
@@ -367,10 +367,73 @@ export function LeadDetailClient({ lead, activities, documents, applications, ta
                 </div>
 
                 {/* ── Middle Column: Working Area ───────────── */}
-                <div className="min-w-0 border-none sm:border-r sm:border-l border-border/40 sm:shadow-none bg-transparent sm:px-6">
-                    <Tabs defaultValue="overview" className="w-full">
-                        <TabsList className="w-full justify-start border-b border-border/40 rounded-none h-auto p-0 bg-transparent overflow-x-auto flex-nowrap">
-                            <TabsTrigger value="overview" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-4 py-3 whitespace-nowrap">Overview</TabsTrigger>
+                <div className="min-w-0 flex flex-col gap-6 sm:px-6">
+                    {/* Always Visible: Vital Stats & Current Action Box */}
+                    <div className="space-y-6">
+                        <div className="grid grid-cols-2 md:grid-cols-4 border divide-x divide-y md:divide-y-0 rounded-xl overflow-hidden bg-card shadow-sm">
+                            <div className="p-3 bg-muted/10">
+                                <p className="text-[11px] text-muted-foreground uppercase tracking-wider mb-1">Target</p>
+                                <p className="text-sm font-medium">{lead.destination_country || 'Any'} / {lead.course_interest || 'Any'}</p>
+                            </div>
+                            <div className="p-3 bg-muted/10">
+                                <p className="text-[11px] text-muted-foreground uppercase tracking-wider mb-1">GPA</p>
+                                <p className="text-sm font-medium">{lead.calculated_gpa || 'Unknown'}</p>
+                            </div>
+                            <div className="p-3 bg-muted/10">
+                                <p className="text-[11px] text-muted-foreground uppercase tracking-wider mb-1">English</p>
+                                <p className="text-sm font-medium">{lead.english_test_score ? `${lead.english_test_type} ${lead.english_test_score}` : 'Not tested'}</p>
+                            </div>
+                            <div className="p-3 bg-muted/10">
+                                <p className="text-[11px] text-muted-foreground uppercase tracking-wider mb-1">Funds</p>
+                                <p className="text-sm font-medium">{lead.budget ? lead.budget : 'Flexible'}</p>
+                            </div>
+                        </div>
+
+                        {(() => {
+                            const currentStage = pipelineStages.find((s: any) => s.name === lead.status);
+                            const stageDocs = documentTemplates.filter((t: any) => t.stage_id === currentStage?.id);
+                            const missingDocs = stageDocs.filter((t: any) => t.is_mandatory && !documents.some((d: any) => d.name.toLowerCase() === t.name.toLowerCase()));
+                            if (missingDocs.length > 0) {
+                                return (
+                                    <div className="p-4 border border-rose-200 bg-rose-50 rounded-xl shadow-sm">
+                                        <h4 className="text-sm font-semibold text-rose-800 flex items-center gap-2 mb-2">
+                                            <AlertTriangle className="h-4 w-4" /> Stop: Missing Documents for {lead.status} Step
+                                        </h4>
+                                        <p className="text-xs text-rose-700/80 mb-3">You cannot move past {lead.status} without these.</p>
+                                        <ul className="grid grid-cols-2 gap-2">
+                                            {missingDocs.map((d: any) => (
+                                                <li key={d.id} className="text-xs font-medium text-rose-900 bg-rose-100/50 px-2 py-1 rounded inline-flex items-center gap-1.5"><FileText className="h-3 w-3" /> {d.name}</li>
+                                            ))}
+                                        </ul>
+                                        <Button variant="outline" size="sm" className="mt-3 bg-white hover:bg-rose-50 text-rose-700 border-rose-200" onClick={() => (document.querySelector('[data-value="docs"]') as HTMLElement)?.click()}>Upload Now</Button>
+                                    </div>
+                                );
+                            }
+                            return null;
+                        })()}
+
+                        <div className="border rounded-xl p-5 bg-card shadow-sm">
+                            <h3 className="font-semibold text-sm mb-4">Stage Focus: {lead.status}</h3>
+                            <p className="text-sm text-muted-foreground mb-6">
+                                {lead.status === 'New' && "Initial contact is critical. Aim to reach out within 2 hours. Gather basic academic details."}
+                                {lead.status === 'Contacted' && "Nurture this lead. Book a consultation call, get their academic documents, and use Course Matcher."}
+                                {lead.status === 'Application' && "They are applying. Ensure all university forms are filled and check for application fees."}
+                                {lead.status === 'Offer' && "Offer received! Negotiate scholarships if possible and help them accept the offer."}
+                                {lead.status === 'Visa' && "Guide them through financial documents, visa forms, and interview prep."}
+                                {lead.status === 'Enrolled' && "They made it! Help with final accommodation checks and pre-departure briefings."}
+                                {!['New', 'Contacted', 'Application', 'Offer', 'Visa', 'Enrolled'].includes(lead.status) && "Follow standard operating procedures for this custom stage."}
+                            </p>
+                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                                <Button variant="secondary" className="w-full justify-start text-xs font-medium shadow-sm bg-blue-50 text-blue-700 hover:bg-blue-100" onClick={() => setShowCall(true)}><Phone className="h-3.5 w-3.5 mr-2" /> Log Call</Button>
+                                <Button variant="secondary" className="w-full justify-start text-xs font-medium shadow-sm bg-amber-50 text-amber-700 hover:bg-amber-100" onClick={() => setShowNote(true)}><MessageSquare className="h-3.5 w-3.5 mr-2" /> Note</Button>
+                                <Button variant="outline" className="w-full justify-start text-xs font-medium shadow-sm" onClick={() => setShowTask(true)}><CheckSquare className="h-3.5 w-3.5 mr-2" /> Schedule Task</Button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <Tabs defaultValue="timeline" className="w-full mt-2">
+                        <TabsList className="w-full justify-start border-b border-border/40 rounded-none h-auto p-0 bg-transparent overflow-x-auto flex-nowrap scrollbar-hide">
+                            <TabsTrigger value="timeline" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-4 py-3 whitespace-nowrap">Timeline</TabsTrigger>
                             <TabsTrigger value="tasks" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-4 py-3 whitespace-nowrap text-muted-foreground">Tasks ({tasks.length})</TabsTrigger>
                             <TabsTrigger value="docs" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-4 py-3 whitespace-nowrap text-muted-foreground">Docs ({documents.length})</TabsTrigger>
                             <TabsTrigger value="matcher" className="rounded-none border-b-2 border-transparent data-[state=active]:border-emerald-500 data-[state=active]:bg-transparent px-4 py-3 whitespace-nowrap text-emerald-700 font-medium">Course Matcher \u2728</TabsTrigger>
@@ -379,90 +442,126 @@ export function LeadDetailClient({ lead, activities, documents, applications, ta
                         </TabsList>
 
                         <div className="py-6">
-                            {/* Overview Tab */}
-                            <TabsContent value="overview" className="m-0 space-y-6 outline-none">
-                                {/* Vital Stats */}
-                                <div className="grid grid-cols-2 md:grid-cols-4 border divide-x divide-y md:divide-y-0 rounded-xl overflow-hidden bg-card shadow-sm">
-                                    <div className="p-3 bg-muted/10">
-                                        <p className="text-[11px] text-muted-foreground uppercase tracking-wider mb-1">Target</p>
-                                        <p className="text-sm font-medium">{lead.destination_country || 'Any'} / {lead.course_interest || 'Any'}</p>
-                                    </div>
-                                    <div className="p-3 bg-muted/10">
-                                        <p className="text-[11px] text-muted-foreground uppercase tracking-wider mb-1">GPA</p>
-                                        <p className="text-sm font-medium">{lead.calculated_gpa || 'Unknown'}</p>
-                                    </div>
-                                    <div className="p-3 bg-muted/10">
-                                        <p className="text-[11px] text-muted-foreground uppercase tracking-wider mb-1">English</p>
-                                        <p className="text-sm font-medium">{lead.english_test_score ? `${lead.english_test_type} ${lead.english_test_score}` : 'Not tested'}</p>
-                                    </div>
-                                    <div className="p-3 bg-muted/10">
-                                        <p className="text-[11px] text-muted-foreground uppercase tracking-wider mb-1">Funds</p>
-                                        <p className="text-sm font-medium">{lead.budget ? lead.budget : 'Flexible'}</p>
-                                    </div>
-                                </div>
-
-                                {/* Alerts area moved here */}
-                                {
-                                    (() => {
-                                        const currentStage = pipelineStages.find((s: any) => s.name === lead.status);
-                                        const stageDocs = documentTemplates.filter((t: any) => t.stage_id === currentStage?.id);
-                                        const missingDocs = stageDocs.filter((t: any) => t.is_mandatory && !documents.some((d: any) => d.name.toLowerCase() === t.name.toLowerCase()));
-                                        if (missingDocs.length > 0) {
-                                            return (
-                                                <div className="p-4 border border-rose-200 bg-rose-50 rounded-xl shadow-sm">
-                                                    <h4 className="text-sm font-semibold text-rose-800 flex items-center gap-2 mb-2">
-                                                        <AlertTriangle className="h-4 w-4" /> Stop: Missing Documents for {lead.status} Step
-                                                    </h4>
-                                                    <p className="text-xs text-rose-700/80 mb-3">You cannot move past {lead.status} without these.</p>
-                                                    <ul className="grid grid-cols-2 gap-2">
-                                                        {missingDocs.map((d: any) => (
-                                                            <li key={d.id} className="text-xs font-medium text-rose-900 bg-rose-100/50 px-2 py-1 rounded inline-flex items-center gap-1.5"><FileText className="h-3 w-3" /> {d.name}</li>
-                                                        ))}
-                                                    </ul>
-                                                    <Button variant="outline" size="sm" className="mt-3 bg-white hover:bg-rose-50 text-rose-700 border-rose-200">Upload Now</Button>
-                                                </div>
-                                            );
-                                        }
-                                        return null;
-                                    })()
-                                }
-
-                                <div className="grid gap-4 md:grid-cols-2">
-                                    {/* Action Box */}
-                                    <div className="border rounded-xl p-5 bg-card shadow-sm">
-                                        <h3 className="font-semibold text-sm mb-4">Stage Focus: {lead.status}</h3>
-                                        <p className="text-sm text-muted-foreground mb-6">
-                                            {lead.status === 'New' && "Initial contact is critical. Aim to reach out within 2 hours. Gather basic academic details."}
-                                            {lead.status === 'Contacted' && "Nurture this lead. Book a consultation call, get their academic documents, and use Course Matcher."}
-                                            {lead.status === 'Application' && "They are applying. Ensure all university forms are filled and check for application fees."}
-                                            {lead.status === 'Offer' && "Offer received! Negotiate scholarships if possible and help them accept the offer."}
-                                            {lead.status === 'Visa' && "Guide them through financial documents, visa forms, and interview prep."}
-                                            {lead.status === 'Enrolled' && "They made it! Help with final accommodation checks and pre-departure briefings."}
-                                            {!['New', 'Contacted', 'Application', 'Offer', 'Visa', 'Enrolled'].includes(lead.status) && "Follow standard operating procedures for this custom stage."}
-                                        </p>
-                                        <div className="grid grid-cols-2 gap-2">
-                                            <Button variant="secondary" className="w-full justify-start text-xs font-medium shadow-sm bg-blue-50 text-blue-700 hover:bg-blue-100" onClick={() => setShowCall(true)}><Phone className="h-3.5 w-3.5 mr-2" /> Log Call</Button>
-                                            <Button variant="secondary" className="w-full justify-start text-xs font-medium shadow-sm bg-amber-50 text-amber-700 hover:bg-amber-100" onClick={() => setShowNote(true)}><MessageSquare className="h-3.5 w-3.5 mr-2" /> Note</Button>
-                                            <Button variant="outline" className="w-full justify-start text-xs font-medium shadow-sm col-span-2" onClick={() => setShowTask(true)}><CheckSquare className="h-3.5 w-3.5 mr-2" /> Schedule Follow-up Task</Button>
+                            {/* Timeline Tab (Main working area) */}
+                            <TabsContent value="timeline" className="m-0 focus-visible:ring-0 outline-none">
+                                <div className="flex flex-col gap-6">
+                                    {/* Universal Quick Input */}
+                                    <div className="bg-card border rounded-xl p-4 shadow-sm">
+                                        <div className="flex items-center gap-2 mb-3">
+                                            <div className={`p-1.5 rounded-md ${quickActionMode === 'call_answered' ? 'bg-emerald-100 text-emerald-600' : quickActionMode === 'call_missed' ? 'bg-rose-100 text-rose-600' : 'bg-blue-100 text-blue-600'}`}>
+                                                {quickActionMode === 'note' ? <MessageSquare className="h-4 w-4" /> : <Phone className="h-4 w-4" />}
+                                            </div>
+                                            <span className="text-sm font-semibold">
+                                                {quickActionMode === 'note' ? 'Add Personal Note' : quickActionMode === 'call_answered' ? 'Log Answered Call' : 'Log Missed Call'}
+                                            </span>
+                                        </div>
+                                        <div className="relative">
+                                            <Textarea
+                                                className={`pr-10 min-h-[80px] text-sm resize-none focus-visible:ring-1 bg-muted/20 ${quickActionMode === 'call_answered' ? 'border-emerald-200 focus-visible:ring-emerald-500' : quickActionMode === 'call_missed' ? 'border-rose-200 focus-visible:ring-rose-500' : 'border-blue-200 focus-visible:ring-blue-500'}`}
+                                                placeholder={quickActionMode === 'note' ? "Type a quick note about this student..." : quickActionMode === 'call_answered' ? "What was discussed during the call?" : "Why was the call missed? (e.g. Ringing, Busy)"}
+                                                value={quickNoteText}
+                                                onChange={e => setQuickNoteText(e.target.value)}
+                                                disabled={isPending}
+                                                onKeyDown={e => {
+                                                    if (e.key === 'Enter' && !e.shiftKey) {
+                                                        e.preventDefault();
+                                                        handleQuickActionSubmit();
+                                                    }
+                                                }}
+                                            />
+                                            <Button
+                                                size="icon"
+                                                className={`absolute bottom-2 right-2 h-8 w-8 rounded-lg ${quickActionMode === 'call_answered' ? 'bg-emerald-600 hover:bg-emerald-700' : quickActionMode === 'call_missed' ? 'bg-rose-600 hover:bg-rose-700' : 'bg-blue-600 hover:bg-blue-700'}`}
+                                                disabled={(!quickNoteText.trim() && quickActionMode === 'note') || isPending}
+                                                onClick={handleQuickActionSubmit}
+                                            >
+                                                {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                                            </Button>
+                                        </div>
+                                        <div className="flex items-center gap-2 mt-3">
+                                            <button onClick={() => setQuickActionMode('note')} className={`px-3 py-1.5 text-xs rounded-full transition-all ${quickActionMode === 'note' ? 'bg-blue-600 text-white shadow-sm' : 'bg-muted text-muted-foreground hover:bg-muted/80'}`}>Note</button>
+                                            <button onClick={() => setQuickActionMode('call_answered')} className={`px-3 py-1.5 text-xs rounded-full transition-all ${quickActionMode === 'call_answered' ? 'bg-emerald-600 text-white shadow-sm' : 'bg-muted text-muted-foreground hover:bg-muted/80'}`}>Reached</button>
+                                            <button onClick={() => setQuickActionMode('call_missed')} className={`px-3 py-1.5 text-xs rounded-full transition-all ${quickActionMode === 'call_missed' ? 'bg-rose-600 text-white shadow-sm' : 'bg-muted text-muted-foreground hover:bg-muted/80'}`}>Missed</button>
                                         </div>
                                     </div>
 
-                                    {/* Pinned Info (Upcoming Tasks & Last interaction) */}
+                                    {/* History List */}
                                     <div className="space-y-4">
-                                        <div className="border rounded-xl p-4 bg-muted/10 shadow-sm">
-                                            <h3 className="font-semibold text-xs uppercase text-muted-foreground tracking-wider mb-3">Up Next</h3>
-                                            {tasks.filter((t: any) => t.status === 'open').length > 0 ? (
-                                                <div className="space-y-2">
-                                                    {tasks.filter((t: any) => t.status === 'open').slice(0, 2).map((t: any) => (
-                                                        <div key={t.id} className="text-sm bg-background p-2 border rounded-md shadow-sm">
-                                                            <p className="font-medium truncate">{t.title}</p>
-                                                            {t.due_date && <p className="text-xs text-amber-600 mt-1 flex items-center gap-1.5"><Calendar className="h-3 w-3" /> {format(new Date(t.due_date), 'MMM dd, h:mm a')}</p>}
+                                        <h4 className="text-xs font-bold uppercase tracking-widest text-muted-foreground/70 flex items-center gap-2 px-1">
+                                            <History className="h-3 w-3" /> Recent Activity
+                                        </h4>
+                                        <div className="space-y-4 relative">
+                                            {(() => {
+                                                const allEvents = [
+                                                    ...activities.map((a: any) => ({ ...a, eventType: 'activity' as const, dateStr: a.created_at })),
+                                                    ...localCallLogs.map((c: any) => ({ ...c, eventType: 'call' as const, dateStr: c.created_at }))
+                                                ].sort((a, b) => new Date(b.dateStr).getTime() - new Date(a.dateStr).getTime());
+
+                                                if (allEvents.length === 0) {
+                                                    return (
+                                                        <div className="text-center py-12 border border-dashed rounded-xl bg-muted/5">
+                                                            <p className="text-sm text-muted-foreground">No history yet. Start by logging an action.</p>
                                                         </div>
-                                                    ))}
-                                                </div>
-                                            ) : (
-                                                <p className="text-sm text-muted-foreground">No upcoming tasks.</p>
-                                            )}
+                                                    )
+                                                }
+
+                                                return allEvents.map((event, index) => {
+                                                    const isLast = index === allEvents.length - 1;
+                                                    if (event.eventType === 'activity') {
+                                                        const a = event;
+                                                        const Icon = activityIcons[a.type] || Clock
+                                                        const iconClass = a.type === 'call' ? 'bg-blue-100 text-blue-600' : a.type === 'note' ? 'bg-amber-100 text-amber-600' : a.type === 'stage_change' ? 'bg-emerald-100 text-emerald-600' : 'bg-purple-100 text-purple-600'
+                                                        return (
+                                                            <div key={`act-${a.id}`} className="flex gap-4 relative group">
+                                                                {!isLast && <div className="absolute left-[19px] top-10 bottom-[-20px] w-0.5 bg-border/60 z-0" />}
+                                                                <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 z-10 ${iconClass} shadow-sm ring-4 ring-background transition-transform group-hover:scale-105`}>
+                                                                    <Icon className="h-4 w-4" />
+                                                                </div>
+                                                                <div className="flex-1 min-w-0 bg-background rounded-xl p-4 border shadow-sm group-hover:border-primary/20 transition-colors">
+                                                                    <div className="flex justify-between items-start mb-2">
+                                                                        <div className="flex items-center gap-2">
+                                                                            <span className="text-xs font-bold uppercase tracking-tight text-foreground">{a.type.replace('_', ' ')}</span>
+                                                                        </div>
+                                                                        <span className="text-[10px] font-medium text-muted-foreground bg-muted px-1.5 py-0.5 rounded">{format(new Date(a.created_at), 'MMM dd, h:mm a')}</span>
+                                                                    </div>
+                                                                    <p className="text-sm text-foreground/80 leading-relaxed">{a.description}</p>
+                                                                    <div className="flex items-center gap-1.5 mt-3 pt-3 border-t">
+                                                                        <div className="w-4 h-4 rounded-full bg-primary/10 flex items-center justify-center text-[8px] font-bold text-primary">
+                                                                            {a.users?.first_name?.charAt(0) || 'S'}
+                                                                        </div>
+                                                                        <p className="text-[10px] text-muted-foreground font-semibold">by {a.users?.first_name || 'System'}</p>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        )
+                                                    } else {
+                                                        const cl = event;
+                                                        return (
+                                                            <div key={`call-${cl.id}`} className="flex gap-4 relative group">
+                                                                {!isLast && <div className="absolute left-[19px] top-10 bottom-[-20px] w-0.5 bg-border/60 z-0" />}
+                                                                <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 z-10 ring-4 ring-background shadow-sm transition-transform group-hover:scale-105 ${cl.answered ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-500'}`}>
+                                                                    {cl.answered ? <PhoneCall className="h-4 w-4" /> : <PhoneOff className="h-4 w-4" />}
+                                                                </div>
+                                                                <div className={`flex-1 min-w-0 bg-background rounded-xl p-4 border-l-4 shadow-sm transition-all group-hover:translate-x-0.5 ${cl.answered ? 'border-l-emerald-500 border-y border-r' : 'border-l-rose-500 border-y border-r'}`}>
+                                                                    <div className="flex justify-between items-start mb-2">
+                                                                        <div className="flex items-center gap-2">
+                                                                            <span className={`text-xs font-bold uppercase tracking-tight ${cl.answered ? 'text-emerald-700' : 'text-rose-700'}`}>{cl.answered ? 'Call Reached' : 'Call Failed'}</span>
+                                                                        </div>
+                                                                        <span className="text-[10px] font-medium text-muted-foreground bg-muted px-1.5 py-0.5 rounded">{format(new Date(cl.created_at), 'MMM dd, h:mm a')}</span>
+                                                                    </div>
+                                                                    {cl.feedback && <p className="text-sm text-foreground/90 font-bold mb-1">{cl.feedback}</p>}
+                                                                    {cl.comment && <p className="text-xs text-muted-foreground leading-relaxed italic">"{cl.comment}"</p>}
+                                                                    {cl.next_followup_at && (
+                                                                        <div className="mt-3 inline-flex items-center gap-2 bg-blue-50 text-blue-700 px-2 py-1 rounded text-[10px] font-bold border border-blue-100">
+                                                                            <Calendar className="h-3 w-3" /> FOLLOW UP: {format(new Date(cl.next_followup_at), 'MMM dd, h:mm a')}
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        )
+                                                    }
+                                                })
+                                            })()}
                                         </div>
                                     </div>
                                 </div>
@@ -680,119 +779,6 @@ export function LeadDetailClient({ lead, activities, documents, applications, ta
                         </div>
                     </Tabs>
                 </div>
-
-                {/* \u2500\u2500 Right Column: Timeline \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */}
-                <div className="flex flex-col sm:h-[calc(100vh-120px)] sm:sticky sm:top-6">
-                    <Card className="flex flex-col h-[500px] sm:h-full border-none shadow-none bg-transparent">
-                        <CardHeader className="py-2 px-0 shrink-0">
-                            <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wider flex justify-between items-center">
-                                Timeline
-                                <Badge variant="secondary" className="text-[10px] bg-muted">{activities.length + localCallLogs.length} Events</Badge>
-                            </CardTitle>
-                        </CardHeader>
-
-                        {/* Universal Quick Input / Inline Logging Top */}
-                        <div className="py-3 shrink-0">
-                            <div className="relative">
-                                <Textarea
-                                    className={`pr-10 min-h-[50px] text-xs resize-none focus-visible:ring-1 bg-card shadow-sm ${quickActionMode === 'call_answered' ? 'border-emerald-200 focus-visible:ring-emerald-500' : quickActionMode === 'call_missed' ? 'border-rose-200 focus-visible:ring-rose-500' : ''}`}
-                                    placeholder={quickActionMode === 'note' ? "Type a quick note..." : quickActionMode === 'call_answered' ? "What did they say?" : "Missed call comment..."}
-                                    value={quickNoteText}
-                                    onChange={e => setQuickNoteText(e.target.value)}
-                                    disabled={isPending}
-                                    onKeyDown={e => {
-                                        if (e.key === 'Enter' && !e.shiftKey) {
-                                            e.preventDefault();
-                                            handleQuickActionSubmit();
-                                        }
-                                    }}
-                                />
-                                <Button
-                                    size="icon"
-                                    className={`absolute bottom-2 right-2 h-6 w-6 rounded-sm ${quickActionMode === 'call_answered' ? 'bg-emerald-500 hover:bg-emerald-600' : quickActionMode === 'call_missed' ? 'bg-rose-500 hover:bg-rose-600' : ''}`}
-                                    disabled={(!quickNoteText.trim() && quickActionMode === 'note') || isPending}
-                                    onClick={handleQuickActionSubmit}
-                                >
-                                    {isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
-                                </Button>
-                            </div>
-                            <div className="flex items-center gap-1 mt-2">
-                                <button onClick={() => setQuickActionMode('note')} className={`px-2 py-1 text-[10px] rounded transition-colors ${quickActionMode === 'note' ? 'bg-primary/10 text-primary font-medium' : 'text-muted-foreground hover:bg-muted'}`}>Note</button>
-                                <button onClick={() => setQuickActionMode('call_answered')} className={`px-2 py-1 text-[10px] rounded transition-colors ${quickActionMode === 'call_answered' ? 'bg-emerald-50 text-emerald-700 font-medium' : 'text-muted-foreground hover:bg-muted'}`}>Answers</button>
-                                <button onClick={() => setQuickActionMode('call_missed')} className={`px-2 py-1 text-[10px] rounded transition-colors ${quickActionMode === 'call_missed' ? 'bg-rose-50 text-rose-700 font-medium' : 'text-muted-foreground hover:bg-muted'}`}>Missed</button>
-                            </div>
-                        </div>
-
-                        <div className="flex-1 overflow-y-auto py-2 space-y-4 pr-1 scrollbar-hide">
-                            {(() => {
-                                const allEvents = [
-                                    ...activities.map((a: any) => ({ ...a, eventType: 'activity' as const, dateStr: a.created_at })),
-                                    ...localCallLogs.map((c: any) => ({ ...c, eventType: 'call' as const, dateStr: c.created_at }))
-                                ].sort((a, b) => new Date(b.dateStr).getTime() - new Date(a.dateStr).getTime());
-
-                                if (allEvents.length === 0) {
-                                    return <div className="text-center text-muted-foreground text-sm py-8 block">No history yet. Start by sending a message or adding a note.</div>
-                                }
-
-                                return allEvents.map((event, index) => {
-                                    const isLast = index === allEvents.length - 1;
-
-                                    if (event.eventType === 'activity') {
-                                        const a = event;
-                                        const Icon = activityIcons[a.type] || Clock
-                                        const iconClass = a.type === 'call' ? 'bg-blue-100 text-blue-600' : a.type === 'note' ? 'bg-amber-100 text-amber-600' : a.type === 'stage_change' ? 'bg-emerald-100 text-emerald-600' : 'bg-purple-100 text-purple-600'
-                                        return (
-                                            <div key={`act-${a.id}`} className="flex gap-3 relative">
-                                                {!isLast && <div className="absolute left-[15px] top-8 bottom-[-16px] w-[2px] bg-border z-0" />}
-                                                <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 z-10 ${iconClass} ring-4 ring-card`}>
-                                                    <Icon className="h-3.5 w-3.5" />
-                                                </div>
-                                                <div className="flex-1 min-w-0 bg-muted/30 rounded-lg p-3 border">
-                                                    <div className="flex justify-between items-start mb-1">
-                                                        <div className="flex items-center gap-2">
-                                                            <span className="text-xs font-semibold capitalize text-foreground">{a.type.replace('_', ' ')}</span>
-                                                        </div>
-                                                        <span className="text-[10px] text-muted-foreground">{format(new Date(a.created_at), 'MMM dd, h:mm a')}</span>
-                                                    </div>
-                                                    <p className="text-sm text-foreground/90">{a.description}</p>
-                                                    <p className="text-[10px] text-muted-foreground mt-2 font-medium">by {a.users?.first_name || 'System'}</p>
-                                                </div>
-                                            </div>
-                                        )
-                                    } else {
-                                        const cl = event;
-                                        return (
-                                            <div key={`call-${cl.id}`} className="flex gap-3 relative">
-                                                {!isLast && <div className="absolute left-[15px] top-8 bottom-[-16px] w-[2px] bg-border z-0" />}
-                                                <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 z-10 ring-4 ring-card ${cl.answered ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-500'}`}>
-                                                    {cl.answered ? <PhoneCall className="h-3.5 w-3.5" /> : <PhoneOff className="h-3.5 w-3.5" />}
-                                                </div>
-                                                <div className="flex-1 min-w-0 bg-muted/30 rounded-lg p-3 border-l-4 border-l-blue-400 border-y border-r border border-r-border border-y-border">
-                                                    <div className="flex justify-between items-start mb-1">
-                                                        <div className="flex items-center gap-2">
-                                                            <span className="text-xs font-semibold text-foreground">{cl.answered ? 'Call Answered' : 'Call Missed'}</span>
-                                                        </div>
-                                                        <span className="text-[10px] text-muted-foreground">{format(new Date(cl.created_at), 'MMM dd, h:mm a')}</span>
-                                                    </div>
-                                                    {cl.feedback && <p className="text-sm text-foreground/90 font-medium">{cl.feedback}</p>}
-                                                    {cl.comment && <p className="text-xs text-muted-foreground mt-1">{cl.comment}</p>}
-                                                    {cl.next_followup_at && (
-                                                        <div className="mt-2 bg-blue-50/80 rounded px-2 py-1 border border-blue-100 inline-block">
-                                                            <p className="text-[10px] text-blue-700 flex items-center gap-1 font-medium">
-                                                                <Calendar className="h-3 w-3" /> Follow up: {format(new Date(cl.next_followup_at), 'MMM dd')}
-                                                            </p>
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        )
-                                    }
-                                })
-                            })()}
-                        </div>
-                    </Card>
-                </div>
-
             </div>
 
             {/* ── Add Note Dialog ─────── */}
@@ -1047,7 +1033,7 @@ export function LeadDetailClient({ lead, activities, documents, applications, ta
                         <Button variant="outline" onClick={() => { setShowConvert(false); setPaymentBlocked(false) }}>Cancel</Button>
                     </DialogFooter>
                 </DialogContent>
-            </Dialog>
-        </div >
+            </Dialog >
+        </div>
     )
 }
