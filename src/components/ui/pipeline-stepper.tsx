@@ -31,15 +31,13 @@ export function PipelineStepper({
                     <React.Fragment key={status}>
                         {/* The Node */}
                         <div className="relative flex flex-col items-center shrink-0">
-                            <button
-                                onClick={() => !disabled && onStatusChange(status)}
-                                disabled={disabled}
+                            <div
                                 className={cn(
-                                    "z-10 flex h-7 w-7 sm:h-8 sm:w-8 items-center justify-center rounded-full border-2 transition-all duration-300 outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 bg-background",
+                                    "z-10 flex h-7 w-7 sm:h-8 sm:w-8 items-center justify-center rounded-full border-2 transition-all duration-300 bg-background",
                                     isCompleted && "border-primary bg-primary text-primary-foreground",
                                     isCurrent && "border-primary text-primary ring-4 ring-primary/20",
-                                    isUpcoming && "border-muted-foreground/30 text-muted-foreground hover:border-primary/50 hover:text-primary",
-                                    disabled && "cursor-not-allowed opacity-50",
+                                    isUpcoming && "border-muted-foreground/30 text-muted-foreground",
+                                    disabled && "opacity-50",
                                     (isCurrent || isCompleted) && isLast && "bg-emerald-500 border-emerald-500 text-emerald-50 shadow-[0_0_15px_rgba(16,185,129,0.5)] ring-emerald-500/20"
                                 )}
                             >
@@ -48,10 +46,10 @@ export function PipelineStepper({
                                 ) : (
                                     <div className={cn(
                                         "h-2.5 w-2.5 rounded-full transition-colors duration-300",
-                                        isCurrent ? "bg-primary" : "bg-transparent group-hover:bg-primary/50"
+                                        isCurrent ? "bg-primary" : "bg-transparent"
                                     )} />
                                 )}
-                            </button>
+                            </div>
                             <span className={cn(
                                 "absolute top-10 whitespace-nowrap text-[10px] sm:text-xs font-medium transition-colors",
                                 isCurrent && "text-foreground font-bold scale-105",

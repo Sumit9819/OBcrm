@@ -240,38 +240,34 @@ export function LeadDetailClient({ lead, activities, documents, applications, ta
     }
 
     return (
-        <div className="flex-1 p-4 pt-6 md:p-8 max-w-[1600px] mx-auto w-full space-y-6" >
+        <div className="flex-1 p-4 pt-6 md:p-8 max-w-7xl mx-auto w-full space-y-6">
 
             {/* \u2500\u2500 Header \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */}
-            < div className="flex items-start gap-4 flex-wrap" >
-                <Link href="/dashboard/leads/all">
-                    <Button variant="ghost" size="icon" className="h-9 w-9 shrink-0"><ArrowLeft className="h-4 w-4" /></Button>
-                </Link>
-                <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-3 flex-wrap">
-                        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary to-indigo-500 flex items-center justify-center text-white font-bold text-lg shrink-0">
-                            {lead.first_name?.charAt(0)}{lead.last_name?.charAt(0)}
-                        </div>
-                        <div>
-                            <h1 className="text-2xl font-bold">{lead.first_name} {lead.last_name}</h1>
-                            <p className="text-sm text-muted-foreground flex items-center gap-3 flex-wrap">
-                                {lead.email && <span className="flex items-center gap-1"><Mail className="h-3 w-3" />{lead.email}</span>}
-                                {lead.phone && <span className="flex items-center gap-1"><Phone className="h-3 w-3" />{lead.phone}</span>}
-                                {lead.nationality && <span className="flex items-center gap-1"><MapPin className="h-3 w-3" />{lead.nationality}</span>}
-                            </p>
-                        </div>
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div className="flex items-center gap-4 flex-wrap">
+                    <Link href="/dashboard/leads/all">
+                        <Button variant="ghost" size="icon" className="h-9 w-9 shrink-0"><ArrowLeft className="h-4 w-4" /></Button>
+                    </Link>
+                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary to-indigo-500 flex items-center justify-center text-white font-bold text-lg shrink-0 shadow-sm">
+                        {lead.first_name?.charAt(0)}{lead.last_name?.charAt(0)}
+                    </div>
+
+                    <div>
+                        <h1 className="text-2xl font-bold">{lead.first_name} {lead.last_name}</h1>
+                        <p className="text-sm text-muted-foreground flex items-center gap-3 flex-wrap">
+                            {lead.email && <span className="flex items-center gap-1"><Mail className="h-3 w-3" />{lead.email}</span>}
+                            {lead.phone && <span className="flex items-center gap-1"><Phone className="h-3 w-3" />{lead.phone}</span>}
+                            {lead.nationality && <span className="flex items-center gap-1"><MapPin className="h-3 w-3" />{lead.nationality}</span>}
+                        </p>
                     </div>
                 </div>
-                <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex items-center gap-2 flex-wrap sm:ml-auto">
                     <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                            <Button variant="outline" size="sm" className="hidden sm:flex" disabled={isPending}><MoreHorizontal className="h-4 w-4 mr-2" /> Actions</Button>
+                            <Button variant="outline" size="sm" disabled={isPending}><MoreHorizontal className="h-4 w-4 mr-2" /> Actions</Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" className="w-48">
                             <DropdownMenuItem onClick={() => setShowEdit(true)}><Edit className="h-3.5 w-3.5 mr-2" />Edit Lead</DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => setShowNote(true)}><MessageSquare className="h-3.5 w-3.5 mr-2" />Add Note</DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => setShowCall(true)}><Phone className="h-3.5 w-3.5 mr-2" />Log Call</DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => setShowTask(true)}><CheckSquare className="h-3.5 w-3.5 mr-2" />Add Task</DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem onClick={() => setShowConvert(true)} className="text-emerald-600">
                                 <GraduationCap className="h-3.5 w-3.5 mr-2" />Convert Lead
@@ -286,49 +282,44 @@ export function LeadDetailClient({ lead, activities, documents, applications, ta
                         </DropdownMenuContent>
                     </DropdownMenu>
                 </div>
-            </div >
+            </div>
 
             {/* \u2500\u2500 Pipeline Progress \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */}
-            < div className="bg-card border rounded-xl overflow-hidden" >
-                <PipelineStepper
-                    currentStatus={lead.status}
-                    statuses={ALL_STATUSES}
-                    onStatusChange={handleStatusChange}
-                    disabled={isPending}
-                />
-            </div >
+            <div className="flex flex-col xl:flex-row xl:items-center gap-4 bg-muted/20 border border-slate-100 p-4 rounded-xl shadow-sm">
+                <div className="flex-1 overflow-x-auto pb-2 xl:pb-0 scrollbar-hide">
+                    <PipelineStepper
+                        currentStatus={lead.status}
+                        statuses={ALL_STATUSES}
+                        onStatusChange={() => { }} // Now read-only visual
+                        disabled={isPending}
+                    />
+                </div>
+                <div className="shrink-0 flex items-center gap-2 border-l pl-4 border-slate-200">
+                    <span className="text-xs font-medium text-muted-foreground mr-1">Move to:</span>
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                            <Button size="sm" className="font-medium bg-primary">Change Stage</Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-48">
+                            {ALL_STATUSES.map(s => (
+                                <DropdownMenuItem key={s} onClick={() => handleStatusChange(s)} disabled={isPending || s === lead.status}>
+                                    {s === lead.status && <CheckCircle className="h-3.5 w-3.5 mr-2 text-emerald-500" />}
+                                    {s !== lead.status && <div className="h-3.5 w-3.5 mr-2" />}
+                                    {s}
+                                </DropdownMenuItem>
+                            ))}
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+                </div>
+            </div>
 
             {/* \u2500\u2500 3-Column Layout \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */}
-            < div className="grid grid-cols-1 lg:grid-cols-[300px_1fr_350px] xl:grid-cols-[320px_1fr_380px] gap-6 items-start mt-6" >
+            <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr_320px] gap-6 items-start mt-6">
 
                 {/* \u2500\u2500 Left Column: Identity Profile \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */}
-                < div className="space-y-4 flex flex-col sm:sticky sm:top-6" >
-                    {/* Alerts */}
-                    {
-                        (() => {
-                            const currentStage = pipelineStages.find((s: any) => s.name === lead.status);
-                            const stageDocs = documentTemplates.filter((t: any) => t.stage_id === currentStage?.id);
-                            const missingDocs = stageDocs.filter((t: any) => t.is_mandatory && !documents.some((d: any) => d.name.toLowerCase() === t.name.toLowerCase()));
-                            if (missingDocs.length > 0) {
-                                return (
-                                    <div className="p-3 border border-rose-200 bg-rose-50 rounded-lg shadow-sm">
-                                        <h4 className="text-sm font-semibold text-rose-800 flex items-center gap-1.5 mb-1.5">
-                                            <AlertTriangle className="h-4 w-4" /> Missing Docs
-                                        </h4>
-                                        <ul className="space-y-1">
-                                            {missingDocs.map((d: any) => (
-                                                <li key={d.id} className="text-xs font-medium text-rose-900">• {d.name}</li>
-                                            ))}
-                                        </ul>
-                                    </div>
-                                );
-                            }
-                            return null;
-                        })()
-                    }
-
-                    <Card>
-                        <CardHeader className="pb-3 border-b"><CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Properties</CardTitle></CardHeader>
+                <div className="space-y-4 flex flex-col sm:sticky sm:top-6">
+                    <Card className="border-none shadow-sm bg-muted/20">
+                        <CardHeader className="pb-3 border-b border-border/50"><CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Properties</CardTitle></CardHeader>
                         <CardContent className="p-4 space-y-4">
                             <div>
                                 <p className="text-xs text-muted-foreground whitespace-nowrap">Destination</p>
@@ -345,7 +336,7 @@ export function LeadDetailClient({ lead, activities, documents, applications, ta
                                     onValueChange={v => handleAssign(v === "unassigned" ? "" : v)}
                                     disabled={isPending}
                                 >
-                                    <SelectTrigger className="h-8 text-sm font-medium">
+                                    <SelectTrigger className="h-8 text-sm font-medium border-border/50 bg-background">
                                         <SelectValue placeholder="Unassigned" />
                                     </SelectTrigger>
                                     <SelectContent>
@@ -358,7 +349,7 @@ export function LeadDetailClient({ lead, activities, documents, applications, ta
                                     </SelectContent>
                                 </Select>
                             </div>
-                            <div className="pt-3 border-t text-xs text-muted-foreground">
+                            <div className="pt-3 border-t border-border/50 text-[11px] text-muted-foreground">
                                 Added {format(new Date(lead.created_at), 'MMM dd, yyyy')}
                                 {lead.referrer && ` via ${lead.referrer.first_name}`}
                             </div>
@@ -373,20 +364,109 @@ export function LeadDetailClient({ lead, activities, documents, applications, ta
                             <Button variant="secondary" className="w-full justify-start text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 text-sm font-medium" onClick={() => setShowConvert(true)}><GraduationCap className="h-4 w-4 mr-2" /> Convert Lead</Button>
                         </CardContent>
                     </Card>
-                </div >
+                </div>
 
-                {/* \u2500\u2500 Middle Column: Working Area \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */}
-                < div className="min-w-0 bg-card border rounded-xl overflow-hidden shadow-sm" >
-                    <Tabs defaultValue="tasks" className="w-full">
-                        <TabsList className="w-full justify-start border-b rounded-none h-auto p-0 bg-transparent overflow-x-auto flex-nowrap">
-                            <TabsTrigger value="tasks" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-4 py-3 whitespace-nowrap">Tasks ({tasks.length})</TabsTrigger>
-                            <TabsTrigger value="docs" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-4 py-3 whitespace-nowrap">Documents ({documents.length})</TabsTrigger>
+                {/* ── Middle Column: Working Area ───────────── */}
+                <div className="min-w-0 border-none sm:border-r sm:border-l border-border/40 sm:shadow-none bg-transparent sm:px-6">
+                    <Tabs defaultValue="overview" className="w-full">
+                        <TabsList className="w-full justify-start border-b border-border/40 rounded-none h-auto p-0 bg-transparent overflow-x-auto flex-nowrap">
+                            <TabsTrigger value="overview" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-4 py-3 whitespace-nowrap">Overview</TabsTrigger>
+                            <TabsTrigger value="tasks" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-4 py-3 whitespace-nowrap text-muted-foreground">Tasks ({tasks.length})</TabsTrigger>
+                            <TabsTrigger value="docs" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-4 py-3 whitespace-nowrap text-muted-foreground">Docs ({documents.length})</TabsTrigger>
                             <TabsTrigger value="matcher" className="rounded-none border-b-2 border-transparent data-[state=active]:border-emerald-500 data-[state=active]:bg-transparent px-4 py-3 whitespace-nowrap text-emerald-700 font-medium">Course Matcher \u2728</TabsTrigger>
-                            <TabsTrigger value="applications" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-4 py-3 whitespace-nowrap">Applications ({applications.length})</TabsTrigger>
-                            {customFields.length > 0 && <TabsTrigger value="details" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-4 py-3 whitespace-nowrap">Information</TabsTrigger>}
+                            <TabsTrigger value="applications" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-4 py-3 whitespace-nowrap text-muted-foreground">Apps ({applications.length})</TabsTrigger>
+                            {customFields.length > 0 && <TabsTrigger value="details" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-4 py-3 whitespace-nowrap text-muted-foreground">Data</TabsTrigger>}
                         </TabsList>
 
-                        <div className="p-6">
+                        <div className="py-6">
+                            {/* Overview Tab */}
+                            <TabsContent value="overview" className="m-0 space-y-6 outline-none">
+                                {/* Vital Stats */}
+                                <div className="grid grid-cols-2 md:grid-cols-4 border divide-x divide-y md:divide-y-0 rounded-xl overflow-hidden bg-card shadow-sm">
+                                    <div className="p-3 bg-muted/10">
+                                        <p className="text-[11px] text-muted-foreground uppercase tracking-wider mb-1">Target</p>
+                                        <p className="text-sm font-medium">{lead.destination_country || 'Any'} / {lead.course_interest || 'Any'}</p>
+                                    </div>
+                                    <div className="p-3 bg-muted/10">
+                                        <p className="text-[11px] text-muted-foreground uppercase tracking-wider mb-1">GPA</p>
+                                        <p className="text-sm font-medium">{lead.calculated_gpa || 'Unknown'}</p>
+                                    </div>
+                                    <div className="p-3 bg-muted/10">
+                                        <p className="text-[11px] text-muted-foreground uppercase tracking-wider mb-1">English</p>
+                                        <p className="text-sm font-medium">{lead.english_test_score ? `${lead.english_test_type} ${lead.english_test_score}` : 'Not tested'}</p>
+                                    </div>
+                                    <div className="p-3 bg-muted/10">
+                                        <p className="text-[11px] text-muted-foreground uppercase tracking-wider mb-1">Funds</p>
+                                        <p className="text-sm font-medium">{lead.budget ? lead.budget : 'Flexible'}</p>
+                                    </div>
+                                </div>
+
+                                {/* Alerts area moved here */}
+                                {
+                                    (() => {
+                                        const currentStage = pipelineStages.find((s: any) => s.name === lead.status);
+                                        const stageDocs = documentTemplates.filter((t: any) => t.stage_id === currentStage?.id);
+                                        const missingDocs = stageDocs.filter((t: any) => t.is_mandatory && !documents.some((d: any) => d.name.toLowerCase() === t.name.toLowerCase()));
+                                        if (missingDocs.length > 0) {
+                                            return (
+                                                <div className="p-4 border border-rose-200 bg-rose-50 rounded-xl shadow-sm">
+                                                    <h4 className="text-sm font-semibold text-rose-800 flex items-center gap-2 mb-2">
+                                                        <AlertTriangle className="h-4 w-4" /> Stop: Missing Documents for {lead.status} Step
+                                                    </h4>
+                                                    <p className="text-xs text-rose-700/80 mb-3">You cannot move past {lead.status} without these.</p>
+                                                    <ul className="grid grid-cols-2 gap-2">
+                                                        {missingDocs.map((d: any) => (
+                                                            <li key={d.id} className="text-xs font-medium text-rose-900 bg-rose-100/50 px-2 py-1 rounded inline-flex items-center gap-1.5"><FileText className="h-3 w-3" /> {d.name}</li>
+                                                        ))}
+                                                    </ul>
+                                                    <Button variant="outline" size="sm" className="mt-3 bg-white hover:bg-rose-50 text-rose-700 border-rose-200">Upload Now</Button>
+                                                </div>
+                                            );
+                                        }
+                                        return null;
+                                    })()
+                                }
+
+                                <div className="grid gap-4 md:grid-cols-2">
+                                    {/* Action Box */}
+                                    <div className="border rounded-xl p-5 bg-card shadow-sm">
+                                        <h3 className="font-semibold text-sm mb-4">Stage Focus: {lead.status}</h3>
+                                        <p className="text-sm text-muted-foreground mb-6">
+                                            {lead.status === 'New' && "Initial contact is critical. Aim to reach out within 2 hours. Gather basic academic details."}
+                                            {lead.status === 'Contacted' && "Nurture this lead. Book a consultation call, get their academic documents, and use Course Matcher."}
+                                            {lead.status === 'Application' && "They are applying. Ensure all university forms are filled and check for application fees."}
+                                            {lead.status === 'Offer' && "Offer received! Negotiate scholarships if possible and help them accept the offer."}
+                                            {lead.status === 'Visa' && "Guide them through financial documents, visa forms, and interview prep."}
+                                            {lead.status === 'Enrolled' && "They made it! Help with final accommodation checks and pre-departure briefings."}
+                                            {!['New', 'Contacted', 'Application', 'Offer', 'Visa', 'Enrolled'].includes(lead.status) && "Follow standard operating procedures for this custom stage."}
+                                        </p>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <Button variant="secondary" className="w-full justify-start text-xs font-medium shadow-sm bg-blue-50 text-blue-700 hover:bg-blue-100" onClick={() => setShowCall(true)}><Phone className="h-3.5 w-3.5 mr-2" /> Log Call</Button>
+                                            <Button variant="secondary" className="w-full justify-start text-xs font-medium shadow-sm bg-amber-50 text-amber-700 hover:bg-amber-100" onClick={() => setShowNote(true)}><MessageSquare className="h-3.5 w-3.5 mr-2" /> Note</Button>
+                                            <Button variant="outline" className="w-full justify-start text-xs font-medium shadow-sm col-span-2" onClick={() => setShowTask(true)}><CheckSquare className="h-3.5 w-3.5 mr-2" /> Schedule Follow-up Task</Button>
+                                        </div>
+                                    </div>
+
+                                    {/* Pinned Info (Upcoming Tasks & Last interaction) */}
+                                    <div className="space-y-4">
+                                        <div className="border rounded-xl p-4 bg-muted/10 shadow-sm">
+                                            <h3 className="font-semibold text-xs uppercase text-muted-foreground tracking-wider mb-3">Up Next</h3>
+                                            {tasks.filter((t: any) => t.status === 'open').length > 0 ? (
+                                                <div className="space-y-2">
+                                                    {tasks.filter((t: any) => t.status === 'open').slice(0, 2).map((t: any) => (
+                                                        <div key={t.id} className="text-sm bg-background p-2 border rounded-md shadow-sm">
+                                                            <p className="font-medium truncate">{t.title}</p>
+                                                            {t.due_date && <p className="text-xs text-amber-600 mt-1 flex items-center gap-1.5"><Calendar className="h-3 w-3" /> {format(new Date(t.due_date), 'MMM dd, h:mm a')}</p>}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            ) : (
+                                                <p className="text-sm text-muted-foreground">No upcoming tasks.</p>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            </TabsContent>
                             {/* Course Matcher Tab */}
                             <TabsContent value="matcher" className="m-0 space-y-4 outline-none">
                                 <div className="flex justify-between items-center mb-4">
@@ -599,19 +679,51 @@ export function LeadDetailClient({ lead, activities, documents, applications, ta
                             )}
                         </div>
                     </Tabs>
-                </div >
+                </div>
 
                 {/* \u2500\u2500 Right Column: Timeline \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */}
-                < div className="flex flex-col sm:h-[calc(100vh-120px)] sm:sticky sm:top-6" >
-                    <Card className="flex flex-col h-[500px] sm:h-full overflow-hidden shadow-sm">
-                        <CardHeader className="py-3 px-4 border-b bg-muted/30 shrink-0">
-                            <CardTitle className="text-sm font-medium flex justify-between items-center">
-                                Omnichannel Timeline
-                                <Badge variant="secondary" className="text-[10px]">{activities.length + localCallLogs.length} Events</Badge>
+                <div className="flex flex-col sm:h-[calc(100vh-120px)] sm:sticky sm:top-6">
+                    <Card className="flex flex-col h-[500px] sm:h-full border-none shadow-none bg-transparent">
+                        <CardHeader className="py-2 px-0 shrink-0">
+                            <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wider flex justify-between items-center">
+                                Timeline
+                                <Badge variant="secondary" className="text-[10px] bg-muted">{activities.length + localCallLogs.length} Events</Badge>
                             </CardTitle>
                         </CardHeader>
 
-                        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                        {/* Universal Quick Input / Inline Logging Top */}
+                        <div className="py-3 shrink-0">
+                            <div className="relative">
+                                <Textarea
+                                    className={`pr-10 min-h-[50px] text-xs resize-none focus-visible:ring-1 bg-card shadow-sm ${quickActionMode === 'call_answered' ? 'border-emerald-200 focus-visible:ring-emerald-500' : quickActionMode === 'call_missed' ? 'border-rose-200 focus-visible:ring-rose-500' : ''}`}
+                                    placeholder={quickActionMode === 'note' ? "Type a quick note..." : quickActionMode === 'call_answered' ? "What did they say?" : "Missed call comment..."}
+                                    value={quickNoteText}
+                                    onChange={e => setQuickNoteText(e.target.value)}
+                                    disabled={isPending}
+                                    onKeyDown={e => {
+                                        if (e.key === 'Enter' && !e.shiftKey) {
+                                            e.preventDefault();
+                                            handleQuickActionSubmit();
+                                        }
+                                    }}
+                                />
+                                <Button
+                                    size="icon"
+                                    className={`absolute bottom-2 right-2 h-6 w-6 rounded-sm ${quickActionMode === 'call_answered' ? 'bg-emerald-500 hover:bg-emerald-600' : quickActionMode === 'call_missed' ? 'bg-rose-500 hover:bg-rose-600' : ''}`}
+                                    disabled={(!quickNoteText.trim() && quickActionMode === 'note') || isPending}
+                                    onClick={handleQuickActionSubmit}
+                                >
+                                    {isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
+                                </Button>
+                            </div>
+                            <div className="flex items-center gap-1 mt-2">
+                                <button onClick={() => setQuickActionMode('note')} className={`px-2 py-1 text-[10px] rounded transition-colors ${quickActionMode === 'note' ? 'bg-primary/10 text-primary font-medium' : 'text-muted-foreground hover:bg-muted'}`}>Note</button>
+                                <button onClick={() => setQuickActionMode('call_answered')} className={`px-2 py-1 text-[10px] rounded transition-colors ${quickActionMode === 'call_answered' ? 'bg-emerald-50 text-emerald-700 font-medium' : 'text-muted-foreground hover:bg-muted'}`}>Answers</button>
+                                <button onClick={() => setQuickActionMode('call_missed')} className={`px-2 py-1 text-[10px] rounded transition-colors ${quickActionMode === 'call_missed' ? 'bg-rose-50 text-rose-700 font-medium' : 'text-muted-foreground hover:bg-muted'}`}>Missed</button>
+                            </div>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto py-2 space-y-4 pr-1 scrollbar-hide">
                             {(() => {
                                 const allEvents = [
                                     ...activities.map((a: any) => ({ ...a, eventType: 'activity' as const, dateStr: a.created_at })),
@@ -678,65 +790,13 @@ export function LeadDetailClient({ lead, activities, documents, applications, ta
                                 })
                             })()}
                         </div>
-
-                        {/* Universal Quick Input / Inline Logging */}
-                        <div className="p-3 bg-muted/20 border-t shrink-0">
-                            {/* Action Type Selectors */}
-                            <div className="flex items-center gap-1 mb-2">
-                                <button
-                                    onClick={() => setQuickActionMode('note')}
-                                    className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors flex items-center gap-1.5 ${quickActionMode === 'note' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}
-                                >
-                                    <MessageSquare className="h-3.5 w-3.5" /> Note
-                                </button>
-                                <button
-                                    onClick={() => setQuickActionMode('call_answered')}
-                                    className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors flex items-center gap-1.5 ${quickActionMode === 'call_answered' ? 'bg-emerald-500 text-white shadow-sm' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}
-                                >
-                                    <PhoneCall className="h-3.5 w-3.5" /> Answered
-                                </button>
-                                <button
-                                    onClick={() => setQuickActionMode('call_missed')}
-                                    className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors flex items-center gap-1.5 ${quickActionMode === 'call_missed' ? 'bg-rose-500 text-white shadow-sm' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}
-                                >
-                                    <PhoneOff className="h-3.5 w-3.5" /> Missed
-                                </button>
-                            </div>
-
-                            <div className="relative">
-                                <Textarea
-                                    className={`pr-12 min-h-[60px] text-sm resize-none focus-visible:ring-1 bg-background ${quickActionMode === 'call_answered' ? 'border-emerald-200 focus-visible:ring-emerald-500' : quickActionMode === 'call_missed' ? 'border-rose-200 focus-visible:ring-rose-500' : ''}`}
-                                    placeholder={quickActionMode === 'note' ? "Type a quick note..." : quickActionMode === 'call_answered' ? "What did they say?" : "Any comment on the missed call?"}
-                                    value={quickNoteText}
-                                    onChange={e => setQuickNoteText(e.target.value)}
-                                    disabled={isPending}
-                                    onKeyDown={e => {
-                                        if (e.key === 'Enter' && !e.shiftKey) {
-                                            e.preventDefault();
-                                            handleQuickActionSubmit();
-                                        }
-                                    }}
-                                />
-                                <Button
-                                    size="icon"
-                                    className={`absolute bottom-2 right-2 h-7 w-7 rounded-sm ${quickActionMode === 'call_answered' ? 'bg-emerald-500 hover:bg-emerald-600' : quickActionMode === 'call_missed' ? 'bg-rose-500 hover:bg-rose-600' : ''}`}
-                                    disabled={(!quickNoteText.trim() && quickActionMode === 'note') || isPending}
-                                    onClick={handleQuickActionSubmit}
-                                >
-                                    {isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
-                                </Button>
-                            </div>
-                            <div className="flex justify-between mt-1.5 px-1">
-                                <span className="text-[10px] text-muted-foreground">Press Enter to save</span>
-                            </div>
-                        </div>
                     </Card>
-                </div >
+                </div>
 
-            </div >
+            </div>
 
-            {/* \u2500\u2500 Add Note Dialog \u2500\u2500\u2500\u2500\u2500\u2500\u2500 */}
-            < Dialog open={showNote} onOpenChange={setShowNote} >
+            {/* ── Add Note Dialog ─────── */}
+            <Dialog open={showNote} onOpenChange={setShowNote}>
                 <DialogContent>
                     <DialogHeader><DialogTitle>Add Note</DialogTitle><DialogDescription>Add a note to {lead.first_name}'s timeline.</DialogDescription></DialogHeader>
                     <Textarea placeholder="Enter your note..." value={noteText} onChange={e => setNoteText(e.target.value)} rows={4} />
@@ -746,10 +806,10 @@ export function LeadDetailClient({ lead, activities, documents, applications, ta
                         </Button>
                     </DialogFooter>
                 </DialogContent>
-            </Dialog >
+            </Dialog>
 
-            {/* \u2500\u2500 Log Call Dialog \u2500\u2500\u2500\u2500\u2500\u2500\u2500 */}
-            < Dialog open={showCall} onOpenChange={setShowCall} >
+            {/* ── Log Call Dialog ─────── */}
+            <Dialog open={showCall} onOpenChange={setShowCall}>
                 <DialogContent className="max-w-md">
                     <DialogHeader><DialogTitle>Log a Call</DialogTitle><DialogDescription>Record call details with {lead.first_name}.</DialogDescription></DialogHeader>
                     <div className="space-y-4 py-1">
@@ -797,10 +857,10 @@ export function LeadDetailClient({ lead, activities, documents, applications, ta
                         </Button>
                     </DialogFooter>
                 </DialogContent>
-            </Dialog >
+            </Dialog>
 
-            {/* \u2500\u2500 Edit Lead Dialog \u2500\u2500\u2500\u2500\u2500\u2500\u2500 */}
-            < Dialog open={showEdit} onOpenChange={setShowEdit} >
+            {/* ── Edit Lead Dialog ─────── */}
+            <Dialog open={showEdit} onOpenChange={setShowEdit}>
                 <DialogContent className="max-w-lg">
                     <DialogHeader><DialogTitle>Edit Lead</DialogTitle></DialogHeader>
                     <div className="grid gap-4 py-2">
@@ -864,10 +924,10 @@ export function LeadDetailClient({ lead, activities, documents, applications, ta
                         </Button>
                     </DialogFooter>
                 </DialogContent>
-            </Dialog >
+            </Dialog>
 
-            {/* \u2500\u2500 Add Task Dialog \u2500\u2500\u2500\u2500\u2500\u2500\u2500 */}
-            < Dialog open={showTask} onOpenChange={setShowTask} >
+            {/* ── Add Task Dialog ─────── */}
+            <Dialog open={showTask} onOpenChange={setShowTask}>
                 <DialogContent className="max-w-md">
                     <DialogHeader><DialogTitle>Add Task</DialogTitle><DialogDescription>Create a task linked to {lead.first_name}.</DialogDescription></DialogHeader>
                     <div className="grid gap-3 py-2">
@@ -912,11 +972,10 @@ export function LeadDetailClient({ lead, activities, documents, applications, ta
                         </Button>
                     </DialogFooter>
                 </DialogContent>
-            </Dialog >
+            </Dialog>
 
-            {/* \u2500\u2500 Convert Lead Dialog \u2500\u2500\u2500\u2500\u2500\u2500\u2500 */}
-            < Dialog open={showConvert} onOpenChange={(o) => { setShowConvert(o); if (!o) setPaymentBlocked(false) }
-            }>
+            {/* ── Convert Lead Dialog ─────── */}
+            <Dialog open={showConvert} onOpenChange={(o) => { setShowConvert(o); if (!o) setPaymentBlocked(false) }}>
                 <DialogContent className="max-w-sm">
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2">
@@ -988,7 +1047,7 @@ export function LeadDetailClient({ lead, activities, documents, applications, ta
                         <Button variant="outline" onClick={() => { setShowConvert(false); setPaymentBlocked(false) }}>Cancel</Button>
                     </DialogFooter>
                 </DialogContent>
-            </Dialog >
+            </Dialog>
         </div >
     )
 }
