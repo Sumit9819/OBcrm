@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useTransition } from "react"
+import { useState, useTransition, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -12,17 +12,19 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { PipelineStepper } from "@/components/ui/pipeline-stepper"
 import {
     ArrowLeft, Phone, Mail, Globe, BookOpen, FileText, Briefcase,
     MoreHorizontal, Edit, MessageSquare, Archive, CheckCircle, Clock,
     UserPlus, CheckSquare, GraduationCap, Plus, Calendar, Flag,
-    Loader2, User, MapPin, PhoneCall, PhoneOff, FlaskConical, AlertTriangle,
+    Loader2, User, MapPin, PhoneCall, PhoneOff, FlaskConical, AlertTriangle, Send
 } from "lucide-react"
 import { format } from "date-fns"
 import { toast } from "sonner"
 import {
     updateLeadStatus, updateLead, addActivity, archiveLead,
     assignLead, convertToStudent, createLeadTask, updateTaskStatus,
+    getMatchingCourses
 } from "./actions"
 import Link from "next/link"
 
@@ -40,7 +42,6 @@ const activityIcons: Record<string, any> = {
 const priorityColors: Record<string, string> = {
     low: 'text-slate-500', medium: 'text-amber-500', high: 'text-red-500',
 }
-const STATUSES = ['New', 'Contacted', 'Application', 'Offer', 'Visa', 'Enrolled']
 
 type Props = {
     lead: any
@@ -83,6 +84,7 @@ export function LeadDetailClient({ lead, activities, documents, applications, ta
 
     // Form states
     const [noteText, setNoteText] = useState("")
+    const [quickNoteText, setQuickNoteText] = useState("")
     const [editData, setEditData] = useState({
         first_name: lead.first_name || "", last_name: lead.last_name || "",
         email: lead.email || "", phone: lead.phone || "",
@@ -96,6 +98,22 @@ export function LeadDetailClient({ lead, activities, documents, applications, ta
         title: "", description: "", due_date: "",
         priority: "medium", assigned_to: currentUserId,
     })
+    const [quickActionMode, setQuickActionMode] = useState<'note' | 'call_answered' | 'call_missed'>('note')
+
+    // Matcher State
+    const [matchedCourses, setMatchedCourses] = useState<any[]>([])
+    const [loadingCourses, setLoadingCourses] = useState(false)
+    const hasAcademicData = !!(lead.calculated_gpa || lead.english_test_score)
+
+    useEffect(() => {
+        if (hasAcademicData) {
+            setLoadingCourses(true)
+            getMatchingCourses(lead.id).then(res => {
+                if (res?.data) setMatchedCourses(res.data)
+                setLoadingCourses(false)
+            })
+        }
+    }, [hasAcademicData, lead.id])
 
     const run = (fn: () => Promise<any>, onSuccess?: () => void) => {
         startTransition(async () => {
@@ -103,6 +121,51 @@ export function LeadDetailClient({ lead, activities, documents, applications, ta
             if (r?.error) toast.error(r.error)
             else { onSuccess?.() }
         })
+    }
+
+    const handleQuickActionSubmit = async () => {
+        if (!quickNoteText.trim() && quickActionMode === 'note') return;
+
+        startTransition(async () => {
+            if (quickActionMode === 'note') {
+                const r = await addActivity(lead.id, 'note', quickNoteText.trim());
+                if (r?.error) toast.error(r.error);
+                else {
+                    toast.success("Note added");
+                    setQuickNoteText("");
+                    router.refresh();
+                }
+            } else {
+                // Determine if answered
+                const isAnswered = quickActionMode === 'call_answered';
+
+                const supabase = (await import("@/lib/supabase/client")).createClient()
+                const { data: { user } } = await supabase.auth.getUser()
+                if (!user) return
+                const { data: profile } = await supabase.from("users").select("agency_id").eq("id", user.id).single()
+
+                // Insert into call logs
+                const { data, error } = await supabase.from("call_logs").insert({
+                    lead_id: lead.id,
+                    agency_id: profile?.agency_id,
+                    logged_by: user.id,
+                    answered: isAnswered,
+                    feedback: quickNoteText.trim() || null,
+                }).select("*, logged_by_user:users!call_logs_logged_by_fkey(first_name, last_name)").single()
+
+                if (error) { toast.error(error.message); return }
+
+                toast.success("Call logged!");
+                setLocalCallLogs(prev => [data, ...prev]);
+
+                // Add summary to activity timeline
+                await addActivity(lead.id, 'call', `${isAnswered ? '\u2705 Answered' : '\u274c Not Answered'} \u2014 ${quickNoteText.trim() || 'No quick comment'}`)
+
+                setQuickNoteText("");
+                setQuickActionMode('note'); // reset back to normal note
+                router.refresh();
+            }
+        });
     }
 
     const handleStatusChange = (status: string) => {
@@ -122,7 +185,7 @@ export function LeadDetailClient({ lead, activities, documents, applications, ta
 
         run(
             () => updateLeadStatus(lead.id, status),
-            () => toast.success(`Status → ${status}`)
+            () => toast.success(`Status \u2192 ${status}`)
         )
     }
 
@@ -170,16 +233,17 @@ export function LeadDetailClient({ lead, activities, documents, applications, ta
         toast.success("Call logged!")
         setLocalCallLogs(prev => [data, ...prev])
         // Also add as activity
-        await addActivity(lead.id, 'call', `${callAnswered ? '✅ Answered' : '❌ Not Answered'} — ${callFeedback || 'No feedback'}`)
+        await addActivity(lead.id, 'call', `${callAnswered ? '\u2705 Answered' : '\u274c Not Answered'} \u2014 ${callFeedback || 'No feedback'}`)
         setCallAnswered(null); setCallFeedback(""); setCallComment(""); setCallFollowup("")
         setShowCall(false)
+        router.refresh()
     }
 
     return (
-        <div className="flex-1 space-y-5 p-4 pt-6 md:p-8 max-w-6xl mx-auto">
+        <div className="flex-1 p-4 pt-6 md:p-8 max-w-[1600px] mx-auto w-full space-y-6" >
 
-            {/* ── Header ─────────────────────────────────── */}
-            <div className="flex items-start gap-4 flex-wrap">
+            {/* \u2500\u2500 Header \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */}
+            < div className="flex items-start gap-4 flex-wrap" >
                 <Link href="/dashboard/leads/all">
                     <Button variant="ghost" size="icon" className="h-9 w-9 shrink-0"><ArrowLeft className="h-4 w-4" /></Button>
                 </Link>
@@ -199,16 +263,9 @@ export function LeadDetailClient({ lead, activities, documents, applications, ta
                     </div>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap">
-                    <Select value={lead.status} onValueChange={handleStatusChange} disabled={isPending}>
-                        <SelectTrigger className="w-[150px]"><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                            {ALL_STATUSES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-                        </SelectContent>
-                    </Select>
-
                     <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                            <Button variant="outline" size="icon" disabled={isPending}><MoreHorizontal className="h-4 w-4" /></Button>
+                            <Button variant="outline" size="sm" className="hidden sm:flex" disabled={isPending}><MoreHorizontal className="h-4 w-4 mr-2" /> Actions</Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" className="w-48">
                             <DropdownMenuItem onClick={() => setShowEdit(true)}><Edit className="h-3.5 w-3.5 mr-2" />Edit Lead</DropdownMenuItem>
@@ -229,280 +286,470 @@ export function LeadDetailClient({ lead, activities, documents, applications, ta
                         </DropdownMenuContent>
                     </DropdownMenu>
                 </div>
-            </div>
+            </div >
 
-            {/* ── Pipeline Progress ──────────────────────── */}
-            <div className="space-y-1.5">
-                <div className="flex gap-1.5">
-                    {ALL_STATUSES.map((s, i) => (
-                        <div key={s} className="flex-1 space-y-1">
-                            <div className={`h-2 rounded-full transition-all ${ALL_STATUSES.indexOf(lead.status) >= i
-                                ? i === ALL_STATUSES.length - 1 ? 'bg-emerald-500' : 'bg-primary'
-                                : 'bg-muted'}`}
-                            />
-                        </div>
-                    ))}
-                </div>
-                <div className="flex justify-between text-[11px] text-muted-foreground">
-                    {ALL_STATUSES.map(s => <span key={s} className={lead.status === s ? 'font-semibold text-foreground' : ''}>{s}</span>)}
-                </div>
-            </div>
+            {/* \u2500\u2500 Pipeline Progress \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */}
+            < div className="bg-card border rounded-xl overflow-hidden" >
+                <PipelineStepper
+                    currentStatus={lead.status}
+                    statuses={ALL_STATUSES}
+                    onStatusChange={handleStatusChange}
+                    disabled={isPending}
+                />
+            </div >
 
-            {/* ── Info Row ───────────────────────────────── */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <Card><CardContent className="p-4">
-                    <p className="text-xs text-muted-foreground">Destination</p>
-                    <p className="font-semibold mt-0.5 flex items-center gap-1"><Globe className="h-3.5 w-3.5 text-muted-foreground" />{lead.destination_country || '—'}</p>
-                </CardContent></Card>
-                <Card><CardContent className="p-4">
-                    <p className="text-xs text-muted-foreground">Course</p>
-                    <p className="font-semibold mt-0.5 flex items-center gap-1"><BookOpen className="h-3.5 w-3.5 text-muted-foreground" />{lead.course_interest || '—'}</p>
-                </CardContent></Card>
-                <Card><CardContent className="p-4">
-                    <p className="text-xs text-muted-foreground">Assigned To</p>
-                    <div className="mt-0.5">
-                        <Select
-                            value={lead.assigned_to || "unassigned"}
-                            onValueChange={v => handleAssign(v === "unassigned" ? "" : v)}
-                            disabled={isPending}
-                        >
-                            <SelectTrigger className="h-7 text-sm border-none p-0 shadow-none font-semibold">
-                                <SelectValue placeholder="Unassigned" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="unassigned">Unassigned</SelectItem>
-                                {staffList.map(s => (
-                                    <SelectItem key={s.id} value={s.id}>
-                                        {s.first_name} {s.last_name}
-                                        {s.job_title && <span className="text-muted-foreground ml-1">· {s.job_title}</span>}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                    </div>
-                </CardContent></Card>
-                <Card><CardContent className="p-4">
-                    <p className="text-xs text-muted-foreground">Added</p>
-                    <p className="font-semibold mt-0.5">{format(new Date(lead.created_at), 'MMM dd, yyyy')}</p>
-                    {lead.referrer && <p className="text-xs text-muted-foreground">via {lead.referrer.first_name} {lead.referrer.last_name}</p>}
-                </CardContent></Card>
-            </div>
+            {/* \u2500\u2500 3-Column Layout \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */}
+            < div className="grid grid-cols-1 lg:grid-cols-[300px_1fr_350px] xl:grid-cols-[320px_1fr_380px] gap-6 items-start mt-6" >
 
-            {/* ── Tabs ───────────────────────────────────── */}
-            <Tabs defaultValue="timeline" className="space-y-4">
-                <TabsList>
-                    <TabsTrigger value="timeline">Timeline ({activities.length})</TabsTrigger>
-                    <TabsTrigger value="calls">📞 Calls ({localCallLogs.length})</TabsTrigger>
-                    <TabsTrigger value="tasks">Tasks ({tasks.length})</TabsTrigger>
-                    <TabsTrigger value="documents">Documents ({documents.length})</TabsTrigger>
-                    <TabsTrigger value="applications">Applications ({applications.length})</TabsTrigger>
-                    {customFields.length > 0 && <TabsTrigger value="details">Extra Details</TabsTrigger>}
-                </TabsList>
-
-                {/* ── Timeline ─────────────── */}
-                <TabsContent value="timeline" className="space-y-3">
-                    <div className="flex gap-2">
-                        <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setShowNote(true)}>
-                            <MessageSquare className="h-3.5 w-3.5" /> Add Note
-                        </Button>
-                        <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setShowCall(true)}>
-                            <Phone className="h-3.5 w-3.5" /> Log Call
-                        </Button>
-                    </div>
-                    {activities.length === 0 ? (
-                        <Card><CardContent className="p-12 text-center text-muted-foreground text-sm">No activities yet. Start by adding a note or logging a call.</CardContent></Card>
-                    ) : (
-                        <div className="space-y-3">
-                            {activities.map((a: any) => {
-                                const Icon = activityIcons[a.type] || Clock
-                                const iconClass = a.type === 'call' ? 'bg-blue-100 text-blue-600' : a.type === 'note' ? 'bg-amber-100 text-amber-600' : a.type === 'stage_change' ? 'bg-emerald-100 text-emerald-600' : 'bg-purple-100 text-purple-600'
+                {/* \u2500\u2500 Left Column: Identity Profile \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */}
+                < div className="space-y-4 flex flex-col sm:sticky sm:top-6" >
+                    {/* Alerts */}
+                    {
+                        (() => {
+                            const currentStage = pipelineStages.find((s: any) => s.name === lead.status);
+                            const stageDocs = documentTemplates.filter((t: any) => t.stage_id === currentStage?.id);
+                            const missingDocs = stageDocs.filter((t: any) => t.is_mandatory && !documents.some((d: any) => d.name.toLowerCase() === t.name.toLowerCase()));
+                            if (missingDocs.length > 0) {
                                 return (
-                                    <div key={a.id} className="flex gap-3 p-4 rounded-lg border bg-card hover:bg-muted/20 transition-colors">
-                                        <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${iconClass}`}>
-                                            <Icon className="h-3.5 w-3.5" />
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                            <div className="flex items-center gap-2 mb-0.5">
-                                                <Badge variant="outline" className="text-xs capitalize">{a.type.replace('_', ' ')}</Badge>
-                                                <span className="text-xs text-muted-foreground">by {a.users?.first_name} {a.users?.last_name}</span>
-                                            </div>
-                                            <p className="text-sm">{a.description}</p>
-                                            <p className="text-xs text-muted-foreground mt-1">{format(new Date(a.created_at), 'MMM dd, yyyy · hh:mm a')}</p>
-                                        </div>
+                                    <div className="p-3 border border-rose-200 bg-rose-50 rounded-lg shadow-sm">
+                                        <h4 className="text-sm font-semibold text-rose-800 flex items-center gap-1.5 mb-1.5">
+                                            <AlertTriangle className="h-4 w-4" /> Missing Docs
+                                        </h4>
+                                        <ul className="space-y-1">
+                                            {missingDocs.map((d: any) => (
+                                                <li key={d.id} className="text-xs font-medium text-rose-900">• {d.name}</li>
+                                            ))}
+                                        </ul>
                                     </div>
-                                )
-                            })}
-                        </div>
-                    )}
-                </TabsContent>
+                                );
+                            }
+                            return null;
+                        })()
+                    }
 
-                {/* ── Call Logs ─────────────── */}
-                <TabsContent value="calls" className="space-y-3">
-                    <div className="flex justify-between items-center">
-                        <p className="text-sm text-muted-foreground">{localCallLogs.length} call{localCallLogs.length !== 1 ? 's' : ''} logged</p>
-                        <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setShowCall(true)}>
-                            <Plus className="h-3.5 w-3.5" /> Log Call
-                        </Button>
-                    </div>
-                    {localCallLogs.length === 0 ? (
-                        <Card><CardContent className="p-12 text-center text-muted-foreground text-sm">No calls logged yet. Click "Log Call" to track your first call.</CardContent></Card>
-                    ) : (
-                        <div className="space-y-3">
-                            {localCallLogs.map((cl: any) => (
-                                <div key={cl.id} className="flex gap-3 p-4 rounded-lg border bg-card">
-                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${cl.answered ? 'bg-emerald-100 text-emerald-600' : 'bg-red-100 text-red-500'}`}>
-                                        {cl.answered ? <PhoneCall className="h-3.5 w-3.5" /> : <PhoneOff className="h-3.5 w-3.5" />}
+                    <Card>
+                        <CardHeader className="pb-3 border-b"><CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Properties</CardTitle></CardHeader>
+                        <CardContent className="p-4 space-y-4">
+                            <div>
+                                <p className="text-xs text-muted-foreground whitespace-nowrap">Destination</p>
+                                <p className="text-sm font-medium mt-0.5 flex items-center gap-1.5"><Globe className="h-3.5 w-3.5 text-muted-foreground" />{lead.destination_country || '—'}</p>
+                            </div>
+                            <div>
+                                <p className="text-xs text-muted-foreground whitespace-nowrap">Course Interest</p>
+                                <p className="text-sm font-medium mt-0.5 flex items-center gap-1.5"><BookOpen className="h-3.5 w-3.5 text-muted-foreground" />{lead.course_interest || '—'}</p>
+                            </div>
+                            <div>
+                                <p className="text-xs text-muted-foreground whitespace-nowrap mb-1">Assigned To</p>
+                                <Select
+                                    value={lead.assigned_to || "unassigned"}
+                                    onValueChange={v => handleAssign(v === "unassigned" ? "" : v)}
+                                    disabled={isPending}
+                                >
+                                    <SelectTrigger className="h-8 text-sm font-medium">
+                                        <SelectValue placeholder="Unassigned" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="unassigned">Unassigned</SelectItem>
+                                        {staffList.map(s => (
+                                            <SelectItem key={s.id} value={s.id}>
+                                                {s.first_name} {s.last_name}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="pt-3 border-t text-xs text-muted-foreground">
+                                Added {format(new Date(lead.created_at), 'MMM dd, yyyy')}
+                                {lead.referrer && ` via ${lead.referrer.first_name}`}
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    <Card>
+                        <CardHeader className="p-4 pb-2 border-b"><CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Quick Actions</CardTitle></CardHeader>
+                        <CardContent className="p-4 grid gap-2">
+                            <Button variant="secondary" className="w-full justify-start text-sm font-medium" onClick={() => setShowCall(true)}><Phone className="h-4 w-4 mr-2" /> Log a Call</Button>
+                            <Button variant="secondary" className="w-full justify-start text-sm font-medium" onClick={() => setShowTask(true)}><CheckSquare className="h-4 w-4 mr-2" /> Add a Task</Button>
+                            <Button variant="secondary" className="w-full justify-start text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 text-sm font-medium" onClick={() => setShowConvert(true)}><GraduationCap className="h-4 w-4 mr-2" /> Convert Lead</Button>
+                        </CardContent>
+                    </Card>
+                </div >
+
+                {/* \u2500\u2500 Middle Column: Working Area \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */}
+                < div className="min-w-0 bg-card border rounded-xl overflow-hidden shadow-sm" >
+                    <Tabs defaultValue="tasks" className="w-full">
+                        <TabsList className="w-full justify-start border-b rounded-none h-auto p-0 bg-transparent overflow-x-auto flex-nowrap">
+                            <TabsTrigger value="tasks" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-4 py-3 whitespace-nowrap">Tasks ({tasks.length})</TabsTrigger>
+                            <TabsTrigger value="docs" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-4 py-3 whitespace-nowrap">Documents ({documents.length})</TabsTrigger>
+                            <TabsTrigger value="matcher" className="rounded-none border-b-2 border-transparent data-[state=active]:border-emerald-500 data-[state=active]:bg-transparent px-4 py-3 whitespace-nowrap text-emerald-700 font-medium">Course Matcher \u2728</TabsTrigger>
+                            <TabsTrigger value="applications" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-4 py-3 whitespace-nowrap">Applications ({applications.length})</TabsTrigger>
+                            {customFields.length > 0 && <TabsTrigger value="details" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-4 py-3 whitespace-nowrap">Information</TabsTrigger>}
+                        </TabsList>
+
+                        <div className="p-6">
+                            {/* Course Matcher Tab */}
+                            <TabsContent value="matcher" className="m-0 space-y-4 outline-none">
+                                <div className="flex justify-between items-center mb-4">
+                                    <div>
+                                        <h3 className="font-semibold text-lg flex items-center gap-2">
+                                            Smart Matcher
+                                            <Badge variant="secondary" className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100">BETA</Badge>
+                                        </h3>
+                                        <p className="text-sm text-muted-foreground">Auto-suggested courses based on {lead.first_name}'s academic profile (GPA: {lead.calculated_gpa || 'N/A'}, {lead.english_test_type || 'English'}: {lead.english_test_score || 'N/A'})</p>
                                     </div>
-                                    <div className="flex-1 min-w-0">
-                                        <div className="flex items-center gap-2 mb-1">
-                                            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${cl.answered ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`}>
-                                                {cl.answered ? '✅ Answered' : '❌ Not Answered'}
-                                            </span>
-                                            <span className="text-xs text-muted-foreground">{format(new Date(cl.created_at), 'MMM dd, yyyy · hh:mm a')}</span>
-                                        </div>
-                                        {cl.feedback && <p className="text-sm font-medium">{cl.feedback}</p>}
-                                        {cl.comment && <p className="text-xs text-muted-foreground mt-0.5">{cl.comment}</p>}
-                                        {cl.next_followup_at && (
-                                            <p className="text-xs text-blue-600 mt-1 flex items-center gap-1">
-                                                <Calendar className="h-3 w-3" /> Follow up: {format(new Date(cl.next_followup_at), 'MMM dd, yyyy · hh:mm a')}
-                                            </p>
+                                    <Button variant="outline" size="sm" className="gap-2">
+                                        <Globe className="h-4 w-4" /> Filter Matcher
+                                    </Button>
+                                </div>
+
+                                {!(lead.calculated_gpa || lead.english_test_score) ? (
+                                    <div className="p-8 text-center border border-dashed rounded-lg bg-emerald-50/30">
+                                        <FlaskConical className="h-8 w-8 text-emerald-400 mx-auto mb-3" />
+                                        <h4 className="font-medium text-emerald-900">Need More Academic Data</h4>
+                                        <p className="text-sm text-emerald-700/80 mt-1 max-w-sm mx-auto">Update the student's Academics profile with their GPA or English test scores to unlock automatic course matching.</p>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-3">
+                                        {loadingCourses ? (
+                                            <div className="p-8 text-center border border-dashed rounded-lg bg-slate-50/50">
+                                                <Loader2 className="h-8 w-8 text-slate-400 animate-spin mx-auto mb-3" />
+                                                <h4 className="font-medium text-slate-700">Finding Best Matches...</h4>
+                                            </div>
+                                        ) : matchedCourses.length === 0 ? (
+                                            <div className="p-8 text-center border border-dashed rounded-lg bg-slate-50/50">
+                                                <GraduationCap className="h-8 w-8 text-slate-400 mx-auto mb-3" />
+                                                <h4 className="font-medium text-slate-700">No matching courses found</h4>
+                                                <p className="text-sm text-slate-500 mt-1 max-w-sm mx-auto">Try adding more university courses or updating the lead's academic profile.</p>
+                                            </div>
+                                        ) : (
+                                            matchedCourses.map((course) => (
+                                                <div key={course.id} className="p-4 border rounded-xl bg-background hover:border-emerald-200 transition-colors flex items-center justify-between gap-4">
+                                                    <div className="flex items-center gap-4">
+                                                        <div className="w-12 h-12 rounded-lg bg-slate-100 border flex items-center justify-center font-bold text-slate-400 text-xl">
+                                                            {course.universities?.name?.charAt(0) || 'U'}
+                                                        </div>
+                                                        <div>
+                                                            <h4 className="font-semibold">{course.name}</h4>
+                                                            <p className="text-sm text-muted-foreground flex items-center gap-2">
+                                                                <MapPin className="h-3 w-3" /> {course.universities?.name}, {course.universities?.country}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="flex flex-col items-end gap-2">
+                                                        <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100 border-emerald-200">
+                                                            Perfect Match \u2713
+                                                        </Badge>
+                                                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                                            <span>Intake: {course.intakes || 'Any'}</span>
+                                                            {course.tuition_fee && (
+                                                                <>
+                                                                    <span>\u2022</span>
+                                                                    <span>${course.tuition_fee}/yr</span>
+                                                                </>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ))
                                         )}
                                     </div>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                </TabsContent>
+                                )}
+                            </TabsContent>
 
-                {/* ── Tasks ────────────────── */}
-                <TabsContent value="tasks" className="space-y-3">
-                    <div className="flex justify-end">
-                        <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setShowTask(true)}>
-                            <Plus className="h-3.5 w-3.5" /> Add Task
-                        </Button>
-                    </div>
-                    {tasks.length === 0 ? (
-                        <Card><CardContent className="p-12 text-center text-muted-foreground text-sm">No tasks linked to this lead. Add one to track follow-ups.</CardContent></Card>
-                    ) : (
-                        <div className="space-y-2">
-                            {tasks.map((t: any) => (
-                                <div key={t.id} className={`flex items-center gap-3 p-3 rounded-lg border bg-card ${t.status === 'done' ? 'opacity-60' : ''}`}>
-                                    <button
-                                        onClick={() => run(() => updateTaskStatus(t.id, t.status === 'done' ? 'open' : 'done'))}
-                                        className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${t.status === 'done' ? 'bg-emerald-500 border-emerald-500' : 'border-muted-foreground hover:border-primary'}`}
-                                    >
-                                        {t.status === 'done' && <CheckCircle className="h-3 w-3 text-white" />}
-                                    </button>
-                                    <div className="flex-1 min-w-0">
-                                        <p className={`text-sm font-medium ${t.status === 'done' ? 'line-through' : ''}`}>{t.title}</p>
-                                        {t.description && <p className="text-xs text-muted-foreground">{t.description}</p>}
-                                        <p className="text-xs text-muted-foreground flex items-center gap-2 mt-0.5">
-                                            {t.due_date && <span className="flex items-center gap-1"><Calendar className="h-3 w-3" />{format(new Date(t.due_date), 'MMM dd, yyyy')}</span>}
-                                            {t.assigned_user && <span className="flex items-center gap-1"><User className="h-3 w-3" />{t.assigned_user.first_name}</span>}
-                                        </p>
+                            {/* Academics Tab */}
+                            <TabsContent value="academics" className="m-0 space-y-4 outline-none">
+                                <div className="flex justify-between items-center mb-4">
+                                    <h3 className="font-semibold text-lg">Academic Profile</h3>
+                                </div>
+
+                                {/* Top stats for auto-matching */}
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                                    <div className="p-3 border rounded-xl bg-slate-50/50">
+                                        <p className="text-xs text-muted-foreground mb-1">Calculated GPA</p>
+                                        <p className="text-xl font-bold">{lead.calculated_gpa || '\u2014'}</p>
                                     </div>
-                                    <Flag className={`h-3.5 w-3.5 shrink-0 ${priorityColors[t.priority]}`} />
+                                    <div className="p-3 border rounded-xl bg-slate-50/50">
+                                        <p className="text-xs text-muted-foreground mb-1">English Test Type</p>
+                                        <p className="text-xl font-bold">{lead.english_test_type || '\u2014'}</p>
+                                    </div>
+                                    <div className="p-3 border rounded-xl bg-slate-50/50">
+                                        <p className="text-xs text-muted-foreground mb-1">Test Score</p>
+                                        <p className="text-xl font-bold">{lead.english_test_score || '\u2014'}</p>
+                                    </div>
+                                    <div className="p-3 border rounded-xl bg-slate-50/50 flex flex-col justify-center">
+                                        <Button variant="outline" size="sm" className="w-full">
+                                            Edit Stats
+                                        </Button>
+                                    </div>
                                 </div>
-                            ))}
-                        </div>
-                    )}
-                </TabsContent>
 
-                {/* ── Documents ────────────── */}
-                <TabsContent value="documents" className="space-y-4">
-                    {/* Add Missing Required Documents Check */}
-                    {(() => {
-                        const currentStage = pipelineStages.find((s: any) => s.name === lead.status)
-                        const stageDocs = documentTemplates.filter((t: any) => t.stage_id === currentStage?.id)
-                        const missingDocs = stageDocs.filter((t: any) => t.is_mandatory && !documents.some((d: any) => d.name.toLowerCase() === t.name.toLowerCase()))
-
-                        if (missingDocs.length > 0) {
-                            return (
-                                <div className="p-4 border border-rose-200 bg-rose-50 rounded-lg">
-                                    <h4 className="text-sm font-semibold text-rose-800 flex items-center gap-2 mb-2">
-                                        <AlertTriangle className="h-4 w-4" /> Action Required: Missing Documents
-                                    </h4>
-                                    <p className="text-xs text-rose-700 mb-3">To stay in the '{lead.status}' stage or advance further, please upload the following mandatory documents.</p>
-                                    <ul className="space-y-1">
-                                        {missingDocs.map((d: any) => (
-                                            <li key={d.id} className="text-xs font-medium text-rose-900">• {d.name}</li>
+                                <div className="flex justify-between items-center mb-2 mt-8">
+                                    <h3 className="font-semibold">Previous Qualifications</h3>
+                                    <Button variant="outline" size="sm" className="gap-1.5">
+                                        <Plus className="h-3.5 w-3.5" /> Add Qualification
+                                    </Button>
+                                </div>
+                                <div className="p-8 text-center border border-dashed rounded-lg text-muted-foreground text-sm">
+                                    No qualifications added yet. Detailed qualifications list will appear here.
+                                </div>
+                            </TabsContent>
+                            {/* Tasks Tab */}
+                            <TabsContent value="tasks" className="m-0 space-y-4 outline-none">
+                                <div className="flex justify-between items-center mb-2">
+                                    <h3 className="font-semibold">Ongoing Tasks</h3>
+                                    <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setShowTask(true)}>
+                                        <Plus className="h-3.5 w-3.5" /> Add Task
+                                    </Button>
+                                </div>
+                                {tasks.length === 0 ? (
+                                    <div className="p-8 text-center border border-dashed rounded-lg text-muted-foreground text-sm">No tasks linked to this lead. Add one to track follow-ups.</div>
+                                ) : (
+                                    <div className="space-y-2">
+                                        {tasks.map((t: any) => (
+                                            <div key={t.id} className={`flex items-center gap-3 p-3 rounded-lg border bg-background hover:bg-muted/30 transition-colors ${t.status === 'done' ? 'opacity-60 bg-muted/20' : ''}`}>
+                                                <button
+                                                    onClick={() => run(() => updateTaskStatus(t.id, t.status === 'done' ? 'open' : 'done'))}
+                                                    className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${t.status === 'done' ? 'bg-emerald-500 border-emerald-500' : 'border-muted-foreground hover:border-primary'}`}
+                                                >
+                                                    {t.status === 'done' && <CheckCircle className="h-3 w-3 text-white" />}
+                                                </button>
+                                                <div className="flex-1 min-w-0">
+                                                    <p className={`text-sm font-medium ${t.status === 'done' ? 'line-through' : ''}`}>{t.title}</p>
+                                                    {t.description && <p className="text-xs text-muted-foreground mt-0.5 truncate">{t.description}</p>}
+                                                    <div className="flex items-center gap-3 mt-1.5 flex-wrap">
+                                                        {t.due_date && <span className="flex items-center gap-1 text-xs text-muted-foreground"><Calendar className="h-3 w-3" />{format(new Date(t.due_date), 'MMM dd, yyyy')}</span>}
+                                                        {t.assigned_user && <span className="flex items-center gap-1 text-xs text-muted-foreground"><User className="h-3 w-3" />{t.assigned_user.first_name}</span>}
+                                                    </div>
+                                                </div>
+                                                <Flag className={`h-4 w-4 shrink-0 ${priorityColors[t.priority]}`} />
+                                            </div>
                                         ))}
-                                    </ul>
-                                </div>
-                            )
-                        }
-                        return null
-                    })()}
+                                    </div>
+                                )}
+                            </TabsContent>
 
-                    {documents.length === 0 ? (
-                        <Card><CardContent className="p-12 text-center text-muted-foreground text-sm">
-                            No documents uploaded.{' '}
-                            <Link href="/dashboard/documents" className="text-primary hover:underline">Go to Documents →</Link>
-                        </CardContent></Card>
-                    ) : (
-                        <div className="rounded-lg border overflow-hidden">
-                            {documents.map((d: any, i: number) => (
-                                <div key={d.id} className={`flex items-center gap-3 p-3 ${i < documents.length - 1 ? 'border-b' : ''}`}>
-                                    <FileText className="h-4 w-4 text-blue-500 shrink-0" />
-                                    <div className="flex-1"><p className="text-sm font-medium">{d.name}</p><p className="text-xs text-muted-foreground">{d.doc_type?.replace('_', ' ')}{d.expiry_date ? ` · Expires ${format(new Date(d.expiry_date), 'MMM dd, yyyy')}` : ''}</p></div>
-                                    <span className="text-xs text-muted-foreground">{format(new Date(d.created_at), 'MMM dd, yyyy')}</span>
+                            {/* Documents Tab */}
+                            <TabsContent value="documents" className="m-0 space-y-4 outline-none">
+                                <div className="flex justify-between items-center mb-2">
+                                    <h3 className="font-semibold">Uploaded Documents</h3>
                                 </div>
-                            ))}
+                                {documents.length === 0 ? (
+                                    <div className="p-8 text-center border border-dashed rounded-lg text-muted-foreground text-sm">
+                                        No documents uploaded. <Link href="/dashboard/documents" className="text-primary hover:underline font-medium">Go to Documents \u2192</Link>
+                                    </div>
+                                ) : (
+                                    <div className="rounded-lg border overflow-hidden bg-background">
+                                        {documents.map((d: any, i: number) => (
+                                            <div key={d.id} className={`flex items-center gap-3 p-3 hover:bg-muted/30 transition-colors ${i < documents.length - 1 ? 'border-b' : ''}`}>
+                                                <div className="bg-blue-100 p-2 rounded-md">
+                                                    <FileText className="h-4 w-4 text-blue-600 shrink-0" />
+                                                </div>
+                                                <div className="flex-1 min-w-0"><p className="text-sm font-medium truncate">{d.name}</p><p className="text-xs text-muted-foreground capitalize">{d.doc_type?.replace('_', ' ')}{d.expiry_date ? ` \u00b7 Expires ${format(new Date(d.expiry_date), 'MMM dd, yyyy')}` : ''}</p></div>
+                                                <div className="text-right">
+                                                    <span className="text-xs text-muted-foreground block">{format(new Date(d.created_at), 'MMM dd, yyyy')}</span>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </TabsContent>
+
+                            {/* Applications Tab */}
+                            <TabsContent value="applications" className="m-0 space-y-4 outline-none">
+                                <div className="flex justify-between items-center mb-2">
+                                    <h3 className="font-semibold">Applications</h3>
+                                </div>
+                                {applications.length === 0 ? (
+                                    <div className="p-8 text-center border border-dashed rounded-lg text-muted-foreground text-sm">No applications yet.</div>
+                                ) : (
+                                    <div className="rounded-lg border overflow-hidden bg-background">
+                                        {applications.map((a: any, i: number) => (
+                                            <div key={a.id} className={`flex items-center gap-3 p-3 hover:bg-muted/30 transition-colors ${i < applications.length - 1 ? 'border-b' : ''}`}>
+                                                <div className="bg-indigo-100 p-2 rounded-md">
+                                                    <Briefcase className="h-4 w-4 text-indigo-600 shrink-0" />
+                                                </div>
+                                                <div className="flex-1 min-w-0"><p className="text-sm font-medium truncate">{a.university_name || '\u2014'}</p><p className="text-xs text-muted-foreground">{a.course_name}{a.intake_season ? ` \u00b7 ${a.intake_season}` : ''}</p></div>
+                                                <Badge variant="secondary" className="text-xs">{a.status}</Badge>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </TabsContent>
+
+                            {/* Details Tab */}
+                            {customFields.length > 0 && (
+                                <TabsContent value="details" className="m-0 space-y-4 outline-none">
+                                    <div className="flex justify-between items-center mb-2">
+                                        <h3 className="font-semibold">Custom Information</h3>
+                                    </div>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 border rounded-lg p-4 bg-background">
+                                        {customFields.map((f: any) => (
+                                            <div key={f.id} className="pb-2 border-b last:border-0 sm:last:border-b-0 sm:nth-last-2:border-0">
+                                                <p className="text-xs text-muted-foreground">{f.field_label}</p>
+                                                <p className="font-medium text-sm mt-0.5 break-words">
+                                                    {lead.custom_data?.[f.field_key] !== undefined && lead.custom_data[f.field_key] !== ""
+                                                        ? String(lead.custom_data[f.field_key])
+                                                        : '\u2014'}
+                                                </p>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </TabsContent>
+                            )}
                         </div>
-                    )}
-                </TabsContent>
+                    </Tabs>
+                </div >
 
-                {/* ── Applications ─────────── */}
-                <TabsContent value="applications">
-                    {applications.length === 0 ? (
-                        <Card><CardContent className="p-12 text-center text-muted-foreground text-sm">No applications yet.</CardContent></Card>
-                    ) : (
-                        <div className="rounded-lg border overflow-hidden">
-                            {applications.map((a: any, i: number) => (
-                                <div key={a.id} className={`flex items-center gap-3 p-3 ${i < applications.length - 1 ? 'border-b' : ''}`}>
-                                    <Briefcase className="h-4 w-4 text-indigo-500 shrink-0" />
-                                    <div className="flex-1"><p className="text-sm font-medium">{a.university_name || '—'}</p><p className="text-xs text-muted-foreground">{a.course_name}{a.intake_season ? ` · ${a.intake_season}` : ''}</p></div>
-                                    <Badge variant="secondary" className="text-xs">{a.status}</Badge>
-                                </div>
-                            ))}
+                {/* \u2500\u2500 Right Column: Timeline \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */}
+                < div className="flex flex-col sm:h-[calc(100vh-120px)] sm:sticky sm:top-6" >
+                    <Card className="flex flex-col h-[500px] sm:h-full overflow-hidden shadow-sm">
+                        <CardHeader className="py-3 px-4 border-b bg-muted/30 shrink-0">
+                            <CardTitle className="text-sm font-medium flex justify-between items-center">
+                                Omnichannel Timeline
+                                <Badge variant="secondary" className="text-[10px]">{activities.length + localCallLogs.length} Events</Badge>
+                            </CardTitle>
+                        </CardHeader>
+
+                        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                            {(() => {
+                                const allEvents = [
+                                    ...activities.map((a: any) => ({ ...a, eventType: 'activity' as const, dateStr: a.created_at })),
+                                    ...localCallLogs.map((c: any) => ({ ...c, eventType: 'call' as const, dateStr: c.created_at }))
+                                ].sort((a, b) => new Date(b.dateStr).getTime() - new Date(a.dateStr).getTime());
+
+                                if (allEvents.length === 0) {
+                                    return <div className="text-center text-muted-foreground text-sm py-8 block">No history yet. Start by sending a message or adding a note.</div>
+                                }
+
+                                return allEvents.map((event, index) => {
+                                    const isLast = index === allEvents.length - 1;
+
+                                    if (event.eventType === 'activity') {
+                                        const a = event;
+                                        const Icon = activityIcons[a.type] || Clock
+                                        const iconClass = a.type === 'call' ? 'bg-blue-100 text-blue-600' : a.type === 'note' ? 'bg-amber-100 text-amber-600' : a.type === 'stage_change' ? 'bg-emerald-100 text-emerald-600' : 'bg-purple-100 text-purple-600'
+                                        return (
+                                            <div key={`act-${a.id}`} className="flex gap-3 relative">
+                                                {!isLast && <div className="absolute left-[15px] top-8 bottom-[-16px] w-[2px] bg-border z-0" />}
+                                                <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 z-10 ${iconClass} ring-4 ring-card`}>
+                                                    <Icon className="h-3.5 w-3.5" />
+                                                </div>
+                                                <div className="flex-1 min-w-0 bg-muted/30 rounded-lg p-3 border">
+                                                    <div className="flex justify-between items-start mb-1">
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="text-xs font-semibold capitalize text-foreground">{a.type.replace('_', ' ')}</span>
+                                                        </div>
+                                                        <span className="text-[10px] text-muted-foreground">{format(new Date(a.created_at), 'MMM dd, h:mm a')}</span>
+                                                    </div>
+                                                    <p className="text-sm text-foreground/90">{a.description}</p>
+                                                    <p className="text-[10px] text-muted-foreground mt-2 font-medium">by {a.users?.first_name || 'System'}</p>
+                                                </div>
+                                            </div>
+                                        )
+                                    } else {
+                                        const cl = event;
+                                        return (
+                                            <div key={`call-${cl.id}`} className="flex gap-3 relative">
+                                                {!isLast && <div className="absolute left-[15px] top-8 bottom-[-16px] w-[2px] bg-border z-0" />}
+                                                <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 z-10 ring-4 ring-card ${cl.answered ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-500'}`}>
+                                                    {cl.answered ? <PhoneCall className="h-3.5 w-3.5" /> : <PhoneOff className="h-3.5 w-3.5" />}
+                                                </div>
+                                                <div className="flex-1 min-w-0 bg-muted/30 rounded-lg p-3 border-l-4 border-l-blue-400 border-y border-r border border-r-border border-y-border">
+                                                    <div className="flex justify-between items-start mb-1">
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="text-xs font-semibold text-foreground">{cl.answered ? 'Call Answered' : 'Call Missed'}</span>
+                                                        </div>
+                                                        <span className="text-[10px] text-muted-foreground">{format(new Date(cl.created_at), 'MMM dd, h:mm a')}</span>
+                                                    </div>
+                                                    {cl.feedback && <p className="text-sm text-foreground/90 font-medium">{cl.feedback}</p>}
+                                                    {cl.comment && <p className="text-xs text-muted-foreground mt-1">{cl.comment}</p>}
+                                                    {cl.next_followup_at && (
+                                                        <div className="mt-2 bg-blue-50/80 rounded px-2 py-1 border border-blue-100 inline-block">
+                                                            <p className="text-[10px] text-blue-700 flex items-center gap-1 font-medium">
+                                                                <Calendar className="h-3 w-3" /> Follow up: {format(new Date(cl.next_followup_at), 'MMM dd')}
+                                                            </p>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        )
+                                    }
+                                })
+                            })()}
                         </div>
-                    )}
-                </TabsContent>
 
-                {/* ── Custom Fields ─────────── */}
-                {customFields.length > 0 && (
-                    <TabsContent value="details">
-                        <Card><CardContent className="p-5 grid grid-cols-2 md:grid-cols-3 gap-4">
-                            {customFields.map((f: any) => (
-                                <div key={f.id}>
-                                    <p className="text-xs text-muted-foreground">{f.field_label}</p>
-                                    <p className="font-medium text-sm mt-0.5">
-                                        {lead.custom_data?.[f.field_key] !== undefined && lead.custom_data[f.field_key] !== ""
-                                            ? String(lead.custom_data[f.field_key])
-                                            : '—'}
-                                    </p>
-                                </div>
-                            ))}
-                        </CardContent></Card>
-                    </TabsContent>
-                )}
-            </Tabs>
+                        {/* Universal Quick Input / Inline Logging */}
+                        <div className="p-3 bg-muted/20 border-t shrink-0">
+                            {/* Action Type Selectors */}
+                            <div className="flex items-center gap-1 mb-2">
+                                <button
+                                    onClick={() => setQuickActionMode('note')}
+                                    className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors flex items-center gap-1.5 ${quickActionMode === 'note' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}
+                                >
+                                    <MessageSquare className="h-3.5 w-3.5" /> Note
+                                </button>
+                                <button
+                                    onClick={() => setQuickActionMode('call_answered')}
+                                    className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors flex items-center gap-1.5 ${quickActionMode === 'call_answered' ? 'bg-emerald-500 text-white shadow-sm' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}
+                                >
+                                    <PhoneCall className="h-3.5 w-3.5" /> Answered
+                                </button>
+                                <button
+                                    onClick={() => setQuickActionMode('call_missed')}
+                                    className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors flex items-center gap-1.5 ${quickActionMode === 'call_missed' ? 'bg-rose-500 text-white shadow-sm' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}
+                                >
+                                    <PhoneOff className="h-3.5 w-3.5" /> Missed
+                                </button>
+                            </div>
 
-            {/* ── Add Note Dialog ─────── */}
-            <Dialog open={showNote} onOpenChange={setShowNote}>
+                            <div className="relative">
+                                <Textarea
+                                    className={`pr-12 min-h-[60px] text-sm resize-none focus-visible:ring-1 bg-background ${quickActionMode === 'call_answered' ? 'border-emerald-200 focus-visible:ring-emerald-500' : quickActionMode === 'call_missed' ? 'border-rose-200 focus-visible:ring-rose-500' : ''}`}
+                                    placeholder={quickActionMode === 'note' ? "Type a quick note..." : quickActionMode === 'call_answered' ? "What did they say?" : "Any comment on the missed call?"}
+                                    value={quickNoteText}
+                                    onChange={e => setQuickNoteText(e.target.value)}
+                                    disabled={isPending}
+                                    onKeyDown={e => {
+                                        if (e.key === 'Enter' && !e.shiftKey) {
+                                            e.preventDefault();
+                                            handleQuickActionSubmit();
+                                        }
+                                    }}
+                                />
+                                <Button
+                                    size="icon"
+                                    className={`absolute bottom-2 right-2 h-7 w-7 rounded-sm ${quickActionMode === 'call_answered' ? 'bg-emerald-500 hover:bg-emerald-600' : quickActionMode === 'call_missed' ? 'bg-rose-500 hover:bg-rose-600' : ''}`}
+                                    disabled={(!quickNoteText.trim() && quickActionMode === 'note') || isPending}
+                                    onClick={handleQuickActionSubmit}
+                                >
+                                    {isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+                                </Button>
+                            </div>
+                            <div className="flex justify-between mt-1.5 px-1">
+                                <span className="text-[10px] text-muted-foreground">Press Enter to save</span>
+                            </div>
+                        </div>
+                    </Card>
+                </div >
+
+            </div >
+
+            {/* \u2500\u2500 Add Note Dialog \u2500\u2500\u2500\u2500\u2500\u2500\u2500 */}
+            < Dialog open={showNote} onOpenChange={setShowNote} >
                 <DialogContent>
                     <DialogHeader><DialogTitle>Add Note</DialogTitle><DialogDescription>Add a note to {lead.first_name}'s timeline.</DialogDescription></DialogHeader>
                     <Textarea placeholder="Enter your note..." value={noteText} onChange={e => setNoteText(e.target.value)} rows={4} />
                     <DialogFooter>
-                        <Button onClick={() => run(() => addActivity(lead.id, 'note', noteText), () => { toast.success("Note added"); setNoteText(""); setShowNote(false) })} disabled={isPending || !noteText.trim()}>
+                        <Button onClick={() => run(() => addActivity(lead.id, 'note', noteText), () => { toast.success("Note added"); setNoteText(""); setShowNote(false); router.refresh() })} disabled={isPending || !noteText.trim()}>
                             {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Add Note"}
                         </Button>
                     </DialogFooter>
                 </DialogContent>
-            </Dialog>
+            </Dialog >
 
-            {/* ── Log Call Dialog ─────── */}
-            <Dialog open={showCall} onOpenChange={setShowCall}>
+            {/* \u2500\u2500 Log Call Dialog \u2500\u2500\u2500\u2500\u2500\u2500\u2500 */}
+            < Dialog open={showCall} onOpenChange={setShowCall} >
                 <DialogContent className="max-w-md">
                     <DialogHeader><DialogTitle>Log a Call</DialogTitle><DialogDescription>Record call details with {lead.first_name}.</DialogDescription></DialogHeader>
                     <div className="space-y-4 py-1">
@@ -550,10 +797,10 @@ export function LeadDetailClient({ lead, activities, documents, applications, ta
                         </Button>
                     </DialogFooter>
                 </DialogContent>
-            </Dialog>
+            </Dialog >
 
-            {/* ── Edit Lead Dialog ─────── */}
-            <Dialog open={showEdit} onOpenChange={setShowEdit}>
+            {/* \u2500\u2500 Edit Lead Dialog \u2500\u2500\u2500\u2500\u2500\u2500\u2500 */}
+            < Dialog open={showEdit} onOpenChange={setShowEdit} >
                 <DialogContent className="max-w-lg">
                     <DialogHeader><DialogTitle>Edit Lead</DialogTitle></DialogHeader>
                     <div className="grid gap-4 py-2">
@@ -611,16 +858,16 @@ export function LeadDetailClient({ lead, activities, documents, applications, ta
                     <DialogFooter>
                         <Button onClick={() => run(
                             () => updateLead(lead.id, { ...editData, custom_data: Object.keys(editCustomData).length > 0 ? editCustomData : undefined }),
-                            () => { toast.success("Lead updated"); setShowEdit(false) }
+                            () => { toast.success("Lead updated"); setShowEdit(false); router.refresh() }
                         )} disabled={isPending}>
                             {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save Changes"}
                         </Button>
                     </DialogFooter>
                 </DialogContent>
-            </Dialog>
+            </Dialog >
 
-            {/* ── Add Task Dialog ─────── */}
-            <Dialog open={showTask} onOpenChange={setShowTask}>
+            {/* \u2500\u2500 Add Task Dialog \u2500\u2500\u2500\u2500\u2500\u2500\u2500 */}
+            < Dialog open={showTask} onOpenChange={setShowTask} >
                 <DialogContent className="max-w-md">
                     <DialogHeader><DialogTitle>Add Task</DialogTitle><DialogDescription>Create a task linked to {lead.first_name}.</DialogDescription></DialogHeader>
                     <div className="grid gap-3 py-2">
@@ -657,7 +904,7 @@ export function LeadDetailClient({ lead, activities, documents, applications, ta
                         <Button
                             onClick={() => run(
                                 () => createLeadTask(lead.id, taskForm),
-                                () => { toast.success("Task created!"); setShowTask(false); setTaskForm({ title: "", description: "", due_date: "", priority: "medium", assigned_to: currentUserId }) }
+                                () => { toast.success("Task created!"); setShowTask(false); setTaskForm({ title: "", description: "", due_date: "", priority: "medium", assigned_to: currentUserId }); router.refresh() }
                             )}
                             disabled={isPending || !taskForm.title.trim()}
                         >
@@ -665,10 +912,11 @@ export function LeadDetailClient({ lead, activities, documents, applications, ta
                         </Button>
                     </DialogFooter>
                 </DialogContent>
-            </Dialog>
+            </Dialog >
 
-            {/* ── Convert Lead Dialog ─────── */}
-            <Dialog open={showConvert} onOpenChange={(o) => { setShowConvert(o); if (!o) setPaymentBlocked(false) }}>
+            {/* \u2500\u2500 Convert Lead Dialog \u2500\u2500\u2500\u2500\u2500\u2500\u2500 */}
+            < Dialog open={showConvert} onOpenChange={(o) => { setShowConvert(o); if (!o) setPaymentBlocked(false) }
+            }>
                 <DialogContent className="max-w-sm">
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2">
@@ -680,7 +928,7 @@ export function LeadDetailClient({ lead, activities, documents, applications, ta
                             </DialogDescription>
                         ) : (
                             <DialogDescription className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-sm mt-1">
-                                <span>⚠️</span>
+                                <span>\u26a0\ufe0f</span>
                                 <span>{paymentBlockedMsg}</span>
                             </DialogDescription>
                         )}
@@ -716,15 +964,15 @@ export function LeadDetailClient({ lead, activities, documents, applications, ta
                             </button>
                         </div>
                     ) : (
-                        /* Payment blocked state — show override option */
+                        /* Payment blocked state \u2014 show override option */
                         <div className="space-y-3 py-2">
-                            <p className="text-sm text-muted-foreground">Admin override — select conversion type to proceed without payment:</p>
+                            <p className="text-sm text-muted-foreground">Admin override \u2014 select conversion type to proceed without payment:</p>
                             <div className="grid grid-cols-2 gap-2">
                                 <Button variant="outline" className="border-emerald-300 text-emerald-700 text-xs" onClick={() => handleConvertToStudent('abroad', true)} disabled={isPending}>
-                                    {isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : '🎓'} Override → Student
+                                    {isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : '\ud83c\udf93'} Override \u2192 Student
                                 </Button>
                                 <Button variant="outline" className="border-violet-300 text-violet-700 text-xs" onClick={() => handleConvertToStudent('test_prep', true)} disabled={isPending}>
-                                    {isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : '🔬'} Override → Learner
+                                    {isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : '\ud83d\udd2c'} Override \u2192 Learner
                                 </Button>
                             </div>
                             <p className="text-xs text-muted-foreground">This override will be logged in the activity timeline.</p>
@@ -740,7 +988,7 @@ export function LeadDetailClient({ lead, activities, documents, applications, ta
                         <Button variant="outline" onClick={() => { setShowConvert(false); setPaymentBlocked(false) }}>Cancel</Button>
                     </DialogFooter>
                 </DialogContent>
-            </Dialog>
-        </div>
+            </Dialog >
+        </div >
     )
 }

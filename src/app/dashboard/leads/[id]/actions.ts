@@ -231,3 +231,52 @@ export async function updateTaskStatus(taskId: string, status: 'open' | 'in_prog
     revalidatePath('/dashboard/tasks')
     return { success: true }
 }
+
+export async function getMatchingCourses(leadId: string) {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return { error: 'Unauthorized' }
+
+    const { data: lead } = await supabase
+        .from('leads')
+        .select('calculated_gpa, english_test_type, english_test_score')
+        .eq('id', leadId)
+        .single()
+
+    if (!lead) return { error: 'Lead not found' }
+
+    const { calculated_gpa, english_test_type, english_test_score } = lead
+
+    // If no academics are set, return empty
+    if (!calculated_gpa && !english_test_score) return { data: [] }
+
+    let query = supabase
+        .from('university_courses')
+        .select(`
+            *,
+            universities (
+                name,
+                country
+            )
+        `)
+
+    if (calculated_gpa) {
+        // Find courses where the required GPA is <= the lead's GPA, or where no GPA is required
+        query = query.or(`min_gpa_required.lte.${calculated_gpa},min_gpa_required.is.null`)
+    }
+
+    if (english_test_score && english_test_type) {
+        if (english_test_type.toLowerCase() === 'ielts') {
+            query = query.or(`min_ielts_required.lte.${english_test_score},min_ielts_required.is.null`)
+        } else if (english_test_type.toLowerCase() === 'toefl') {
+            query = query.or(`min_toefl_required.lte.${english_test_score},min_toefl_required.is.null`)
+        } else if (english_test_type.toLowerCase() === 'pte') {
+            query = query.or(`min_pte_required.lte.${english_test_score},min_pte_required.is.null`)
+        }
+    }
+
+    const { data: courses, error } = await query
+
+    if (error) return { error: error.message }
+    return { data: courses }
+}

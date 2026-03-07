@@ -1,5 +1,4 @@
-"use client"
-
+import Link from "next/link"
 import { useState, useEffect } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
@@ -199,6 +198,11 @@ export default function PartnersPage() {
                                     <TableCell className="text-right">
                                         {isAdmin && (
                                             <div className="flex justify-end gap-2">
+                                                <Button variant="outline" size="sm" asChild>
+                                                    <Link href={`/dashboard/settings/partners/${partner.id}`}>
+                                                        Manage Courses
+                                                    </Link>
+                                                </Button>
                                                 <Button variant="ghost" size="icon" onClick={() => handleOpenEdit(partner)}>
                                                     <Edit className="h-4 w-4" />
                                                 </Button>
@@ -275,6 +279,6 @@ export default function PartnersPage() {
                     </form>
                 </DialogContent>
             </Dialog>
-        </div>
+        </div >
     )
 }
