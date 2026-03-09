@@ -47,7 +47,7 @@ export async function updateLeadStatus(leadId: string, status: string) {
 
     const { data: userData } = await supabase.from('users').select('agency_id').eq('id', user.id).single()
 
-    const { error } = await supabase.from('leads').update({ status }).eq('id', leadId)
+    const { error } = await supabase.from('leads').update({ status }).eq('id', leadId).eq('agency_id', userData?.agency_id)
     if (error) return { error: error.message }
 
     await supabase.from('activities').insert({
@@ -74,7 +74,9 @@ export async function updateLead(leadId: string, data: {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return { error: 'Unauthorized' }
 
-    const { error } = await supabase.from('leads').update(data).eq('id', leadId)
+    const { data: userData } = await supabase.from('users').select('agency_id').eq('id', user.id).single()
+
+    const { error } = await supabase.from('leads').update(data).eq('id', leadId).eq('agency_id', userData?.agency_id)
     if (error) return { error: error.message }
 
     revalidatePath(`/dashboard/leads/${leadId}`)
@@ -107,7 +109,9 @@ export async function archiveLead(leadId: string) {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return { error: 'Unauthorized' }
 
-    const { error } = await supabase.from('leads').delete().eq('id', leadId)
+    const { data: userData } = await supabase.from('users').select('agency_id').eq('id', user.id).single()
+
+    const { error } = await supabase.from('leads').delete().eq('id', leadId).eq('agency_id', userData?.agency_id)
     if (error) return { error: error.message }
 
     revalidatePath('/dashboard/leads/all')
@@ -119,11 +123,13 @@ export async function assignLead(leadId: string, assignedTo: string | null) {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return { error: 'Unauthorized' }
+    const { data: userData } = await supabase.from('users').select('agency_id').eq('id', user.id).single()
 
     const { error } = await supabase
         .from('leads')
         .update({ assigned_to: assignedTo || null })
         .eq('id', leadId)
+        .eq('agency_id', userData?.agency_id)
     if (error) return { error: error.message }
 
     revalidatePath(`/dashboard/leads/${leadId}`)
@@ -172,6 +178,7 @@ export async function convertToStudent(
         .from('leads')
         .update({ status: 'Enrolled', student_type: studentType })
         .eq('id', leadId)
+        .eq('agency_id', userData?.agency_id)
     if (error) return { error: error.message }
 
     const label = studentType === 'abroad' ? '🎓 Study Abroad Student' : '🔬 Test Prep Learner'
@@ -225,7 +232,9 @@ export async function updateTaskStatus(taskId: string, status: 'open' | 'in_prog
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return { error: 'Unauthorized' }
 
-    const { error } = await supabase.from('tasks').update({ status, updated_at: new Date().toISOString() }).eq('id', taskId)
+    const { data: userData } = await supabase.from('users').select('agency_id').eq('id', user.id).single()
+
+    const { error } = await supabase.from('tasks').update({ status, updated_at: new Date().toISOString() }).eq('id', taskId).eq('agency_id', userData?.agency_id)
     if (error) return { error: error.message }
 
     revalidatePath('/dashboard/tasks')
@@ -275,8 +284,181 @@ export async function getMatchingCourses(leadId: string) {
         }
     }
 
-    const { data: courses, error } = await query
+    try {
+        const { data: courses, error } = await query
 
-    if (error) return { error: error.message }
-    return { data: courses }
+        if (error) return { data: [], error: error.message }
+        return { data: courses, error: null }
+    } catch (err: any) {
+        console.error("Error matching courses:", err)
+        return { data: [], error: err.message }
+    }
+}
+
+export async function sendWhatsappMessage(leadId: string, message: string) {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return { error: 'Unauthorized' }
+
+    // Get user's agency explicitly
+    const { data: profile } = await supabase.from('users').select('agency_id').eq('id', user.id).single()
+    if (!profile?.agency_id) return { error: 'Agency not found' }
+
+    // Get lead and verify access and get lead phone
+    const { data: leadData } = await supabase
+        .from('leads')
+        .select('agency_id, phone, first_name, last_name')
+        .eq('id', leadId)
+        .eq('agency_id', profile.agency_id)
+        .single()
+
+    if (!leadData) return { error: 'Lead not found or unauthorized' }
+    if (!leadData.phone) return { error: 'Lead does not have a phone number' }
+
+    // Fetch WhatsApp integration for this agency
+    const { data: integration } = await supabase
+        .from('agency_integrations')
+        .select('config')
+        .eq('agency_id', profile.agency_id)
+        .eq('provider', 'whatsapp')
+        .eq('is_active', true)
+        .single()
+
+    if (!integration || !integration.config || !integration.config.systemToken || !integration.config.phoneId) {
+        return { error: 'WhatsApp integration is not configured for your agency. Go to Settings > Integrations.' }
+    }
+
+    const { systemToken, phoneId } = integration.config
+
+    // Format phone number (remove +, spaces, dashes - WhatsApp requires numbers only, including country code)
+    const formattedPhone = leadData.phone.replace(/[^0-9]/g, '')
+
+    try {
+        const response = await fetch(`https://graph.facebook.com/v19.0/${phoneId}/messages`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${systemToken}`,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                messaging_product: 'whatsapp',
+                to: formattedPhone,
+                type: 'text',
+                text: {
+                    preview_url: false,
+                    body: message
+                }
+            })
+        })
+
+        const data = await response.json()
+
+        if (!response.ok) {
+            console.error('WhatsApp API Error:', data)
+            return { error: data.error?.message || 'Failed to send WhatsApp message via Meta API' }
+        }
+
+        // Log the activity
+        await supabase
+            .from('activities')
+            .insert({
+                lead_id: leadId,
+                agency_id: profile.agency_id,
+                user_id: user.id,
+                type: 'note', // 'whatsapp' is not in activity_type enum
+                description: `WhatsApp Message Sent: ${message}`,
+            })
+
+        revalidatePath(`/dashboard/leads/${leadId}`)
+        return { success: true }
+    } catch (err: any) {
+        console.error('WhatsApp fetch error:', err)
+        return { error: 'A network error occurred while sending the message' }
+    }
+}
+
+export async function sendEmailMessage(leadId: string, subject: string, message: string) {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+
+    if (!user) {
+        return { error: 'Unauthorized' }
+    }
+
+    const { data: profile } = await supabase
+        .from('users')
+        .select('agency_id')
+        .eq('id', user.id)
+        .single()
+
+    if (!profile?.agency_id) {
+        return { error: 'No agency found for user' }
+    }
+
+    // Get the Google (Gmail) credentials
+    const { data: integration } = await supabase
+        .from('agency_integrations')
+        .select('config')
+        .eq('agency_id', profile.agency_id)
+        .eq('provider', 'google')
+        .single()
+
+    if (!integration || !integration.config || !integration.config.email || !integration.config.appPassword) {
+        return { error: 'Gmail is not configured for this agency. Please set it up in Integrations.' }
+    }
+
+    const { email: senderEmail, appPassword } = integration.config
+
+    // Get the lead to fetch recipient email
+    const { data: lead } = await supabase
+        .from('leads')
+        .select('email, first_name')
+        .eq('id', leadId)
+        .single()
+
+    if (!lead) {
+        return { error: 'Lead not found' }
+    }
+
+    if (!lead.email) {
+        return { error: 'This lead does not have an email address.' }
+    }
+
+    try {
+        const nodemailer = await import('nodemailer');
+
+        const transporter = nodemailer.createTransport({
+            service: 'gmail',
+            auth: {
+                user: senderEmail,
+                pass: appPassword
+            }
+        });
+
+        // Send mail
+        await transporter.sendMail({
+            from: senderEmail,
+            to: lead.email,
+            subject: subject,
+            text: message, // plain text body
+            html: message.replace(/\n/g, '<br>'), // basic html body mapping
+        });
+
+        // Log the activity
+        await supabase
+            .from('activities')
+            .insert({
+                lead_id: leadId,
+                agency_id: profile.agency_id,
+                user_id: user.id,
+                type: 'email',
+                description: `Email Sent: ${subject}\n\n${message}`,
+            })
+
+        revalidatePath(`/dashboard/leads/${leadId}`)
+        return { success: true }
+    } catch (err: any) {
+        console.error('Email sending error:', err)
+        return { error: err.message || 'A network error occurred while sending the email' }
+    }
 }

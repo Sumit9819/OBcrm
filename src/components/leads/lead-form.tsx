@@ -97,8 +97,10 @@ export function LeadForm({ onSuccess }: { onSuccess?: () => void }) {
     // Set default pipeline once loaded
     useEffect(() => {
         if (pipelines.length > 0 && !form.getValues("pipelineId")) {
-            const defaultPipeline = pipelines.find(p => p.is_default) || pipelines[0]
-            form.setValue("pipelineId", defaultPipeline.id)
+            const defaultPipeline = pipelines.find(p => p.is_default)
+            if (defaultPipeline) {
+                form.setValue("pipelineId", defaultPipeline.id)
+            }
         }
     }, [pipelines, form])
 

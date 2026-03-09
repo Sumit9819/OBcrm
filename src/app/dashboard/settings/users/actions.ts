@@ -108,7 +108,7 @@ export async function updateUserRole(
 
     const { data: profile } = await supabase
         .from("users")
-        .select("role")
+        .select("role, agency_id")
         .eq("id", user.id)
         .single()
 
@@ -120,6 +120,7 @@ export async function updateUserRole(
         .from("users")
         .update({ role, job_title: job_title || null })
         .eq("id", targetUserId)
+        .eq("agency_id", profile?.agency_id)
 
     if (error) return { error: error.message }
 
@@ -140,7 +141,7 @@ export async function deleteUser(targetUserId: string) {
 
     const { data: profile } = await supabase
         .from("users")
-        .select("role")
+        .select("role, agency_id")
         .eq("id", user.id)
         .single()
 
@@ -150,6 +151,17 @@ export async function deleteUser(targetUserId: string) {
 
     if (targetUserId === user.id) {
         return { error: "You cannot delete your own account" }
+    }
+
+    // Verify the target user belongs to the same agency before deleting
+    const { data: targetUser } = await supabase
+        .from("users")
+        .select("agency_id")
+        .eq("id", targetUserId)
+        .single()
+
+    if (targetUser?.agency_id !== profile?.agency_id) {
+        return { error: "Cannot delete user from another agency" }
     }
 
     const { error } = await admin.auth.admin.deleteUser(targetUserId)

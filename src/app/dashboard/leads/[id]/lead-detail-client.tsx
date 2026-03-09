@@ -24,7 +24,7 @@ import { toast } from "sonner"
 import {
     updateLeadStatus, updateLead, addActivity, archiveLead,
     assignLead, convertToStudent, createLeadTask, updateTaskStatus,
-    getMatchingCourses
+    getMatchingCourses, sendWhatsappMessage, sendEmailMessage
 } from "./actions"
 import Link from "next/link"
 
@@ -68,6 +68,9 @@ export function LeadDetailClient({ lead, activities, documents, applications, ta
 
     // Dialog states
     const [showNote, setShowNote] = useState(false)
+    const [showDelete, setShowDelete] = useState(false)
+    const [showWhatsapp, setShowWhatsapp] = useState(false)
+    const [showEmail, setShowEmail] = useState(false)
     const [showCall, setShowCall] = useState(false)
     const [showEdit, setShowEdit] = useState(false)
     const [showTask, setShowTask] = useState(false)
@@ -237,6 +240,40 @@ export function LeadDetailClient({ lead, activities, documents, applications, ta
         setCallAnswered(null); setCallFeedback(""); setCallComment(""); setCallFollowup("")
         setShowCall(false)
         router.refresh()
+    }
+
+    const [whatsappMessage, setWhatsappMessage] = useState("")
+    const handleSendWhatsapp = async () => {
+        if (!whatsappMessage.trim()) return;
+        startTransition(async () => {
+            const r = await sendWhatsappMessage(lead.id, whatsappMessage.trim())
+            if (r?.error) {
+                toast.error(r.error)
+            } else {
+                toast.success('WhatsApp message sent!')
+                setShowWhatsapp(false)
+                setWhatsappMessage("")
+                router.refresh()
+            }
+        })
+    }
+
+    const [emailSubject, setEmailSubject] = useState("")
+    const [emailBody, setEmailBody] = useState("")
+    const handleSendEmail = async () => {
+        if (!emailSubject.trim() || !emailBody.trim()) return;
+        startTransition(async () => {
+            const r = await sendEmailMessage(lead.id, emailSubject.trim(), emailBody.trim())
+            if (r?.error) {
+                toast.error(r.error)
+            } else {
+                toast.success('Email message sent!')
+                setShowEmail(false)
+                setEmailSubject("")
+                setEmailBody("")
+                router.refresh()
+            }
+        })
     }
 
     return (
@@ -423,10 +460,12 @@ export function LeadDetailClient({ lead, activities, documents, applications, ta
                                 {lead.status === 'Enrolled' && "They made it! Help with final accommodation checks and pre-departure briefings."}
                                 {!['New', 'Contacted', 'Application', 'Offer', 'Visa', 'Enrolled'].includes(lead.status) && "Follow standard operating procedures for this custom stage."}
                             </p>
-                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                                <Button variant="secondary" className="w-full justify-start text-xs font-medium shadow-sm bg-blue-50 text-blue-700 hover:bg-blue-100" onClick={() => setShowCall(true)}><Phone className="h-3.5 w-3.5 mr-2" /> Log Call</Button>
+                            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                                <Button variant="secondary" className="w-full justify-start text-xs font-medium shadow-sm bg-blue-50 text-blue-700 hover:bg-blue-100" onClick={() => setShowEmail(true)}><Mail className="h-3.5 w-3.5 mr-2" /> Email</Button>
+                                <Button variant="secondary" className="w-full justify-start text-xs font-medium shadow-sm bg-emerald-50 text-emerald-700 hover:bg-emerald-100" onClick={() => setShowWhatsapp(true)}><MessageSquare className="h-3.5 w-3.5 mr-2" /> WhatsApp</Button>
+                                <Button variant="secondary" className="w-full justify-start text-xs font-medium shadow-sm bg-indigo-50 text-indigo-700 hover:bg-indigo-100" onClick={() => setShowCall(true)}><Phone className="h-3.5 w-3.5 mr-2" /> Log Call</Button>
                                 <Button variant="secondary" className="w-full justify-start text-xs font-medium shadow-sm bg-amber-50 text-amber-700 hover:bg-amber-100" onClick={() => setShowNote(true)}><MessageSquare className="h-3.5 w-3.5 mr-2" /> Note</Button>
-                                <Button variant="outline" className="w-full justify-start text-xs font-medium shadow-sm" onClick={() => setShowTask(true)}><CheckSquare className="h-3.5 w-3.5 mr-2" /> Schedule Task</Button>
+                                <Button variant="outline" className="w-full justify-start text-xs font-medium shadow-sm" onClick={() => setShowTask(true)}><CheckSquare className="h-3.5 w-3.5 mr-2" /> Task</Button>
                             </div>
                         </div>
                     </div>
@@ -780,6 +819,77 @@ export function LeadDetailClient({ lead, activities, documents, applications, ta
                     </Tabs>
                 </div>
             </div>
+
+            {/* ── Send WhatsApp Dialog ─────── */}
+            <Dialog open={showWhatsapp} onOpenChange={setShowWhatsapp}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Send WhatsApp Message</DialogTitle>
+                        <DialogDescription>
+                            Send a message directly to {lead.first_name}'s WhatsApp ({lead.phone}).
+                            This requires the agency WhatsApp integration to be active.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <Textarea
+                        placeholder="Type your message..."
+                        value={whatsappMessage}
+                        onChange={e => setWhatsappMessage(e.target.value)}
+                        rows={4}
+                    />
+                    <DialogFooter>
+                        <Button
+                            onClick={handleSendWhatsapp}
+                            disabled={isPending || !whatsappMessage.trim() || !lead.phone}
+                            variant="default"
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                        >
+                            {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Send className="w-4 h-4 mr-2" /> Send</>}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* ── Send Email Dialog ─────── */}
+            <Dialog open={showEmail} onOpenChange={setShowEmail}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Send Email</DialogTitle>
+                        <DialogDescription>
+                            Send an email to {lead.first_name} ({lead.email}).
+                            This requires your Gmail integration to be active.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-2">
+                        <div className="space-y-1.5">
+                            <Label>Subject</Label>
+                            <Input
+                                placeholder="Message Subject"
+                                value={emailSubject}
+                                onChange={e => setEmailSubject(e.target.value)}
+                            />
+                        </div>
+                        <div className="space-y-1.5">
+                            <Label>Message</Label>
+                            <Textarea
+                                placeholder="Write your email body..."
+                                value={emailBody}
+                                onChange={e => setEmailBody(e.target.value)}
+                                rows={6}
+                            />
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button
+                            onClick={handleSendEmail}
+                            disabled={isPending || !emailSubject.trim() || !emailBody.trim() || !lead.email}
+                            variant="default"
+                            className="bg-blue-600 hover:bg-blue-700 text-white"
+                        >
+                            {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Send className="w-4 h-4 mr-2" /> Send Email</>}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
 
             {/* ── Add Note Dialog ─────── */}
             <Dialog open={showNote} onOpenChange={setShowNote}>

@@ -69,6 +69,8 @@ export default function AllLeadsPage() {
     const [showCSV, setShowCSV] = useState(false)
     const [csvRows, setCSVRows] = useState<Record<string, string>[]>([])
     const [csvPending, setCSVPending] = useState(false)
+    const [pipelines, setPipelines] = useState<any[]>([])
+    const [selectedPipelineId, setSelectedPipelineId] = useState("")
 
     // Add Lead dialog
     const [showAddLead, setShowAddLead] = useState(false)
@@ -86,7 +88,7 @@ export default function AllLeadsPage() {
             return
         }
 
-        const [leadsRes, agentsRes, staffRes] = await Promise.all([
+        const [leadsRes, agentsRes, staffRes, pipelinesRes] = await Promise.all([
             supabase.from("leads").select(`
                 *,
                 owner:users!leads_owner_id_fkey(id, first_name, last_name),
@@ -94,11 +96,18 @@ export default function AllLeadsPage() {
             `).order("created_at", { ascending: false }),
             supabase.from("users").select("id, first_name, last_name").eq("role", "agent"),
             supabase.from("users").select("id, first_name, last_name, job_title").not("role", "in", '("agent","student")'),
+            supabase.from("pipelines").select("id, name, is_default").eq('agency_id', profile?.agency_id).order('is_default', { ascending: false }),
         ])
 
         setLeads(leadsRes.data || [])
         setAgents(agentsRes.data || [])
         setStaff(staffRes.data || [])
+        const fetchedPipelines = pipelinesRes.data || []
+        setPipelines(fetchedPipelines)
+        if (fetchedPipelines.length > 0) {
+            const defaultPl = fetchedPipelines.find(p => p.is_default)
+            setSelectedPipelineId(defaultPl ? defaultPl.id : fetchedPipelines[0].id)
+        }
         setLoading(false)
     }, [])
 
@@ -174,21 +183,14 @@ export default function AllLeadsPage() {
             const { data: { user } } = await supabase.auth.getUser()
             const { data: profile } = await supabase.from("users").select("agency_id").eq("id", user!.id).single()
 
-            // Get default pipeline
-            const { data: pipelines } = await supabase.from('pipelines')
-                .select('id')
-                .eq('agency_id', profile?.agency_id)
-                .order('is_default', { ascending: false })
-                .limit(1)
-
-            const defaultPipelineId = pipelines?.[0]?.id || null
+            const targetPipelineId = selectedPipelineId || null
 
             // Get first stage for default status
             let startingStatus = "New"
-            if (defaultPipelineId) {
+            if (targetPipelineId) {
                 const { data: stages } = await supabase.from('pipeline_stages')
                     .select('name')
-                    .eq('pipeline_id', defaultPipelineId)
+                    .eq('pipeline_id', targetPipelineId)
                     .order('sort_order')
                     .limit(1)
                 if (stages && stages[0]) startingStatus = stages[0].name
@@ -205,7 +207,7 @@ export default function AllLeadsPage() {
                 course_interest: row.course_interest || row.course || "",
                 nationality: row.nationality || "",
                 status: startingStatus,
-                pipeline_id: defaultPipelineId,
+                pipeline_id: targetPipelineId,
                 is_shared_with_company: true,
             }))
 
@@ -464,9 +466,28 @@ export default function AllLeadsPage() {
                             <p className="font-medium mb-1">Expected CSV columns:</p>
                             <code className="text-xs font-mono">first_name, last_name, email, phone, destination_country, course_interest, nationality</code>
                         </div>
-                        <div>
-                            <Label>Choose CSV File</Label>
-                            <Input type="file" accept=".csv" onChange={handleCSVFile} className="mt-1.5" />
+                        <div className="flex gap-4 items-end">
+                            <div className="flex-1">
+                                <Label>Choose CSV File</Label>
+                                <Input type="file" accept=".csv" onChange={handleCSVFile} className="mt-1.5" />
+                            </div>
+                            {pipelines.length > 0 && (
+                                <div className="flex-1">
+                                    <Label>Target Pipeline</Label>
+                                    <Select value={selectedPipelineId} onValueChange={setSelectedPipelineId}>
+                                        <SelectTrigger className="mt-1.5">
+                                            <SelectValue placeholder="Select pipeline..." />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {pipelines.map(p => (
+                                                <SelectItem key={p.id} value={p.id}>
+                                                    {p.name} {p.is_default ? "(Default)" : ""}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            )}
                         </div>
                         {csvRows.length > 0 && (
                             <div>

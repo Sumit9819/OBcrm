@@ -38,6 +38,13 @@ export async function enrollStudent(batchId: string, leadId: string) {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return { error: 'Unauthorized' }
 
+    const { data: userData } = await supabase.from('users').select('agency_id').eq('id', user.id).single()
+
+    // Assuming batch_enrollments can have agency_id implicitly via batch, 
+    // but checking if the lead belongs to the agency is safer.
+    const { data: lead } = await supabase.from('leads').select('id').eq('id', leadId).eq('agency_id', userData?.agency_id).single()
+    if (!lead) return { error: 'Lead not found or unauthorized' }
+
     const { error } = await supabase.from('batch_enrollments').insert({
         batch_id: batchId,
         lead_id: leadId,
@@ -54,10 +61,13 @@ export async function deleteBatch(batchId: string) {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return { error: 'Unauthorized' }
 
+    const { data: userData } = await supabase.from('users').select('agency_id').eq('id', user.id).single()
+
     const { error } = await supabase
         .from('batches')
         .delete()
         .eq('id', batchId)
+        .eq('agency_id', userData?.agency_id)
 
     if (error) return { error: error.message }
 

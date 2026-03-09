@@ -16,7 +16,7 @@ ALTER TABLE branches ENABLE ROW LEVEL SECURITY;
 DO $$ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'branches' AND policyname = 'Agency members view their branches') THEN
         CREATE POLICY "Agency members view their branches" ON branches FOR SELECT USING (
-            agency_id = (SELECT agency_id FROM users WHERE id = auth.uid())
+            agency_id = get_my_agency_id()
         );
     END IF;
 END $$;
@@ -57,7 +57,7 @@ ALTER TABLE call_logs ENABLE ROW LEVEL SECURITY;
 DO $$ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'call_logs' AND policyname = 'Agency members view call logs') THEN
         CREATE POLICY "Agency members view call logs" ON call_logs FOR SELECT USING (
-            agency_id = (SELECT agency_id FROM users WHERE id = auth.uid())
+            agency_id = get_my_agency_id()
         );
     END IF;
 END $$;
@@ -65,7 +65,7 @@ END $$;
 DO $$ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'call_logs' AND policyname = 'Staff insert call logs') THEN
         CREATE POLICY "Staff insert call logs" ON call_logs FOR INSERT WITH CHECK (
-            agency_id = (SELECT agency_id FROM users WHERE id = auth.uid())
+            agency_id = get_my_agency_id()
         );
     END IF;
 END $$;

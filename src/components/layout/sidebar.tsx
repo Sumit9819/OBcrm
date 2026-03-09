@@ -91,19 +91,19 @@ const navSections: NavSection[] = [
                     { title: "Kanban Board", url: "/dashboard/leads/kanban" },
                     { title: "Add New Lead", url: "/dashboard/leads/new" },
                 ],
-                roles: ["agent"],
+                roles: ["super_admin", "agency_admin", "agent"],
             },
             {
                 title: "Students",
                 icon: UserCheck,
                 url: "/dashboard/students",
-                roles: ["super_admin", "agency_admin", "staff", "agent"],
+                roles: ["super_admin", "agency_admin", "staff", "agent", "accountant"],
             },
             {
                 title: "Learners",
                 icon: GraduationCap,
                 url: "/dashboard/learners",
-                roles: ["super_admin", "agency_admin", "staff", "agent"],
+                roles: ["super_admin", "agency_admin", "staff", "agent", "accountant"],
             },
             {
                 title: "Classes & Payments",

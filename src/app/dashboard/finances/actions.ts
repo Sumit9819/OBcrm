@@ -81,6 +81,11 @@ export async function createInvoice(prevState: any, formData: FormData) {
 export async function verifyPayment(invoiceId: string) {
     const supabase = await createClient()
 
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return { error: 'Unauthorized' }
+
+    const { data: userData } = await supabase.from('users').select('agency_id').eq('id', user.id).single()
+
     // Update invoice status to paid
     const { error } = await supabase
         .from('invoices')
@@ -89,6 +94,7 @@ export async function verifyPayment(invoiceId: string) {
             paid_at: new Date().toISOString()
         })
         .eq('id', invoiceId)
+        .eq('agency_id', userData?.agency_id)
 
     if (error) {
         console.error("Payment Verification Error:", error)

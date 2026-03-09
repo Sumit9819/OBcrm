@@ -14,11 +14,6 @@ export default async function PrivateLeadsPage() {
         .eq('id', user.id)
         .single()
 
-    // Admins should see all leads, not just their own
-    if (['super_admin', 'agency_admin'].includes(profile?.role || '')) {
-        redirect('/dashboard/leads/all')
-    }
-
     // Agents: only fetch their own leads (explicit owner_id filter + RLS)
     const { data: leads } = await supabase
         .from("leads")

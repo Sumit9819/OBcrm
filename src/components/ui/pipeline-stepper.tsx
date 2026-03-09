@@ -31,14 +31,17 @@ export function PipelineStepper({
                     <React.Fragment key={status}>
                         {/* The Node */}
                         <div className="relative flex flex-col items-center shrink-0">
-                            <div
+                            <button
+                                type="button"
+                                onClick={() => onStatusChange(status)}
+                                disabled={disabled || index > currentIndex + 1}
                                 className={cn(
                                     "z-10 flex h-7 w-7 sm:h-8 sm:w-8 items-center justify-center rounded-full border-2 transition-all duration-300 bg-background",
-                                    isCompleted && "border-primary bg-primary text-primary-foreground",
+                                    isCompleted && "border-primary bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer",
                                     isCurrent && "border-primary text-primary ring-4 ring-primary/20",
-                                    isUpcoming && "border-muted-foreground/30 text-muted-foreground",
-                                    disabled && "opacity-50",
-                                    (isCurrent || isCompleted) && isLast && "bg-emerald-500 border-emerald-500 text-emerald-50 shadow-[0_0_15px_rgba(16,185,129,0.5)] ring-emerald-500/20"
+                                    index === currentIndex + 1 && !disabled && "border-primary/50 text-muted-foreground hover:border-primary hover:text-primary cursor-pointer border-dashed",
+                                    index > currentIndex + 1 && "border-muted-foreground/30 text-muted-foreground opacity-50 cursor-not-allowed",
+                                    (isCurrent || isCompleted) && isLast && "bg-emerald-500 border-emerald-500 text-emerald-50 shadow-[0_0_15px_rgba(16,185,129,0.5)] ring-emerald-500/20 hover:bg-emerald-600"
                                 )}
                             >
                                 {isCompleted || (isCurrent && isLast) ? (
@@ -49,12 +52,13 @@ export function PipelineStepper({
                                         isCurrent ? "bg-primary" : "bg-transparent"
                                     )} />
                                 )}
-                            </div>
+                            </button>
                             <span className={cn(
                                 "absolute top-10 whitespace-nowrap text-[10px] sm:text-xs font-medium transition-colors",
                                 isCurrent && "text-foreground font-bold scale-105",
                                 isCompleted && "text-primary/80",
-                                isUpcoming && "text-muted-foreground",
+                                index === currentIndex + 1 && "text-foreground/80",
+                                index > currentIndex + 1 && "text-muted-foreground",
                                 isCurrent && isLast && "text-emerald-600"
                             )}>
                                 {status}
