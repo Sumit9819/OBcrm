@@ -13,7 +13,7 @@ type PaymentEvidence = {
 async function getPaidInvoiceEvidence(supabase: any, agencyId: string, leadId: string): Promise<PaymentEvidence | null> {
     const { data: paidInvoice, error } = await supabase
         .from('invoices')
-        .select('id, amount, currency, paid_at')
+        .select('id, amount, currency, paid_at, updated_at, created_at')
         .eq('agency_id', agencyId)
         .eq('lead_id', leadId)
         .eq('status', 'paid')
@@ -26,13 +26,43 @@ async function getPaidInvoiceEvidence(supabase: any, agencyId: string, leadId: s
         throw new Error(error.message)
     }
 
-    if (!paidInvoice) return null
+    if (paidInvoice) {
+        return {
+            id: paidInvoice.id,
+            amount: Number(paidInvoice.amount || 0),
+            currency: paidInvoice.currency || 'USD',
+            paid_at: paidInvoice.paid_at,
+        }
+    }
+
+    // Legacy fallback: older records may have status=paid with no paid_at.
+    const { data: legacyPaidInvoice, error: legacyError } = await supabase
+        .from('invoices')
+        .select('id, amount, currency, paid_at, updated_at, created_at')
+        .eq('agency_id', agencyId)
+        .eq('lead_id', leadId)
+        .eq('status', 'paid')
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+    if (legacyError) {
+        throw new Error(legacyError.message)
+    }
+
+    if (!legacyPaidInvoice) return null
+
+    const inferredPaidAt =
+        legacyPaidInvoice.paid_at ||
+        legacyPaidInvoice.updated_at ||
+        legacyPaidInvoice.created_at ||
+        new Date().toISOString()
 
     return {
-        id: paidInvoice.id,
-        amount: Number(paidInvoice.amount || 0),
-        currency: paidInvoice.currency || 'USD',
-        paid_at: paidInvoice.paid_at,
+        id: legacyPaidInvoice.id,
+        amount: Number(legacyPaidInvoice.amount || 0),
+        currency: legacyPaidInvoice.currency || 'USD',
+        paid_at: inferredPaidAt,
     }
 }
 
@@ -87,7 +117,7 @@ export async function updateLeadStatus(leadId: string, status: string) {
             if (!evidence) {
                 return {
                     error: 'PAYMENT_REQUIRED',
-                    message: 'No paid invoice with payment timestamp found for this lead. Please record payment first.',
+                    message: 'No paid invoice found for this lead. Please record payment first.',
                 }
             }
         } catch (err: any) {
@@ -236,7 +266,7 @@ export async function convertToStudent(
         if (!paymentEvidence) {
             return {
                 error: 'PAYMENT_REQUIRED',
-                message: 'No paid invoice with payment timestamp found for this lead. Please record payment first before converting.',
+                message: 'No paid invoice found for this lead. Please record payment first before converting.',
             }
         }
     }
@@ -263,48 +293,16 @@ export async function convertToStudent(
             : null,
     }
 
-    if (paymentEvidence) {
-        const { error: paymentRecordError } = await supabase
-            .from('lead_payment_records')
-            .upsert({
-                agency_id: userData.agency_id,
-                lead_id: leadId,
-                invoice_id: paymentEvidence.id,
-                amount: paymentEvidence.amount,
-                currency: paymentEvidence.currency,
-                paid_at: paymentEvidence.paid_at,
-                source: 'invoice_paid',
-                recorded_by: user.id,
-            }, { onConflict: 'lead_id,invoice_id' })
-
-        if (paymentRecordError) {
-            const { error: rollbackError } = await supabase
-                .from('leads')
-                .update({ status: leadData.status, student_type: leadData.student_type || null })
-                .eq('id', leadId)
-                .eq('agency_id', userData.agency_id)
-
-            if (rollbackError) {
-                return {
-                    error: `Lead converted but payment record failed and rollback failed. Payment record error: ${paymentRecordError.message}. Rollback error: ${rollbackError.message}`,
-                }
-            }
-
-            return { error: `Payment record creation failed: ${paymentRecordError.message}. Changes were rolled back.` }
-        }
-    }
-
     // Log conversion activity
-    const { error: activityErr } = await supabase.from('activities').insert({
+    const { data: activityData, error: activityErr } = await supabase.from('activities').insert({
         agency_id: userData.agency_id,
         lead_id: leadId,
         user_id: user.id,
         type: 'stage_change',
         description: `Lead converted to ${label}${overridePaymentCheck && isAdmin ? ' (Admin override — payment bypassed)' : ''}. Meta: ${JSON.stringify(conversionMeta)}`,
-    })
+    }).select('id').single()
 
     if (activityErr) {
-        // Best-effort rollback to avoid silent partial success.
         const { error: rollbackError } = await supabase
             .from('leads')
             .update({ status: leadData.status, student_type: leadData.student_type || null })
@@ -318,6 +316,57 @@ export async function convertToStudent(
         }
 
         return { error: `Conversion audit log failed: ${activityErr.message}. Changes were rolled back.` }
+    }
+
+    let paymentRecordError: any = null
+    if (paymentEvidence) {
+        const { error } = await supabase
+            .from('lead_payment_records')
+            .upsert({
+                agency_id: userData.agency_id,
+                lead_id: leadId,
+                invoice_id: paymentEvidence.id,
+                amount: paymentEvidence.amount,
+                currency: paymentEvidence.currency,
+                paid_at: paymentEvidence.paid_at,
+                source: 'invoice_paid',
+                recorded_by: user.id,
+            }, { onConflict: 'lead_id,invoice_id' })
+        paymentRecordError = error
+    } else if (overridePaymentCheck) {
+        const { error } = await supabase
+            .from('lead_payment_records')
+            .insert({
+                agency_id: userData.agency_id,
+                lead_id: leadId,
+                invoice_id: null,
+                amount: 0,
+                currency: 'USD',
+                paid_at: new Date().toISOString(),
+                source: 'manual_override',
+                recorded_by: user.id,
+            })
+        paymentRecordError = error
+    }
+
+    if (paymentRecordError) {
+        const { error: rollbackError } = await supabase
+            .from('leads')
+            .update({ status: leadData.status, student_type: leadData.student_type || null })
+            .eq('id', leadId)
+            .eq('agency_id', userData.agency_id)
+
+        if (activityData?.id) {
+            await supabase.from('activities').delete().eq('id', activityData.id).eq('agency_id', userData.agency_id)
+        }
+
+        if (rollbackError) {
+            return {
+                error: `Lead converted but payment record failed and rollback failed. Payment record error: ${paymentRecordError.message}. Rollback error: ${rollbackError.message}`,
+            }
+        }
+
+        return { error: `Payment record creation failed: ${paymentRecordError.message}. Changes were rolled back.` }
     }
 
     revalidatePath(`/dashboard/leads/${leadId}`)

@@ -1,7 +1,6 @@
 "use client"
 
 import { useState, useTransition } from "react"
-import { useRouter } from "next/navigation"
 import { format } from "date-fns"
 import { toast } from "sonner"
 import {
@@ -76,7 +75,6 @@ export function LeadDialogManager({
     setLocalCallLogs,
     router
 }: Props) {
-    const navRouter = useRouter()
     const [isPending, startTransition] = useTransition()
     const isAdmin = currentUserRole === 'super_admin' || currentUserRole === 'agency_admin'
 
@@ -301,8 +299,17 @@ export function LeadDialogManager({
                     <DialogFooter>
                         <Button
                             onClick={async () => {
-                                // This usually calls addActivity in parent
-                                setShowNote(false);
+                                startTransition(async () => {
+                                    const result = await addActivity(lead.id, 'note', noteText.trim())
+                                    if (result?.error) {
+                                        toast.error(result.error)
+                                        return
+                                    }
+                                    toast.success("Note added")
+                                    setNoteText("")
+                                    setShowNote(false)
+                                    router.refresh()
+                                })
                             }}
                             disabled={isPending || !noteText.trim()}
                         >
