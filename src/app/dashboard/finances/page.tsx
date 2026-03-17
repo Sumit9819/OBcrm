@@ -30,17 +30,30 @@ type Invoice = {
     universities: { name: string } | null
 }
 
+type Commission = {
+    amount: number | null
+    status: string
+    paid_at: string | null
+    lead: { branch_id: string | null } | null
+    agent: { first_name: string | null; last_name: string | null } | null
+}
+
 export default function FinancesPage() {
     const [invoices, setInvoices] = useState<Invoice[]>([])
     const [leads, setLeads] = useState<any[]>([])
     const [loading, setLoading] = useState(true)
     const [userRole, setUserRole] = useState("")
+    const [commissions, setCommissions] = useState<Commission[]>([])
+    const [branches, setBranches] = useState<{ id: string; name: string }[]>([])
+    const [branchFilter, setBranchFilter] = useState<string>('all')
     const supabase = createClient()
 
     useEffect(() => {
         checkAccess()
         fetchInvoices()
         fetchLeads()
+        fetchCommissions()
+        fetchBranches()
     }, [])
 
     const checkAccess = async () => {
@@ -66,6 +79,22 @@ export default function FinancesPage() {
             .select("id, first_name, last_name")
             .order("first_name", { ascending: true })
         setLeads(data || [])
+    }
+
+    const fetchCommissions = async () => {
+        const { data } = await supabase
+            .from('agent_commissions')
+            .select('amount, status, paid_at, lead:leads!agent_commissions_lead_id_fkey(branch_id), agent:users!agent_commissions_agent_id_fkey(first_name, last_name)')
+
+        setCommissions((data as any) || [])
+    }
+
+    const fetchBranches = async () => {
+        const { data } = await supabase
+            .from('branches')
+            .select('id, name')
+            .order('name', { ascending: true })
+        setBranches(data || [])
     }
 
     const updateStatus = async (id: string, status: string) => {
@@ -135,6 +164,51 @@ export default function FinancesPage() {
     const paidCount = invoices.filter(i => i.status === 'paid').length
     const pendingCount = invoices.filter(i => i.status === 'sent' || i.status === 'draft').length
 
+    const filteredCommissions = commissions.filter((c) =>
+        branchFilter === 'all' ? true : c.lead?.branch_id === branchFilter
+    )
+
+    const paidCommissionsAmount = filteredCommissions
+        .filter(c => c.status === 'paid')
+        .reduce((sum, c) => sum + Number(c.amount || 0), 0)
+
+    const pendingCommissionsAmount = filteredCommissions
+        .filter(c => c.status !== 'paid')
+        .reduce((sum, c) => sum + Number(c.amount || 0), 0)
+
+    const byAgent = Object.entries(
+        filteredCommissions.reduce<Record<string, number>>((acc, c) => {
+            const key = `${c.agent?.first_name || ''} ${c.agent?.last_name || ''}`.trim() || 'Unknown Agent'
+            acc[key] = (acc[key] || 0) + Number(c.amount || 0)
+            return acc
+        }, {})
+    )
+        .map(([name, total]) => ({ name, total }))
+        .sort((a, b) => b.total - a.total)
+        .slice(0, 6)
+
+    const maxAgentTotal = byAgent.length ? byAgent[0].total : 0
+
+    const monthlyPayouts = Array.from({ length: 6 }).map((_, offset) => {
+        const date = new Date()
+        date.setMonth(date.getMonth() - (5 - offset))
+        const year = date.getFullYear()
+        const month = date.getMonth()
+        const label = format(new Date(year, month, 1), 'MMM yyyy')
+
+        const amount = filteredCommissions
+            .filter(c => {
+                if (!c.paid_at || c.status !== 'paid') return false
+                const paid = new Date(c.paid_at)
+                return paid.getFullYear() === year && paid.getMonth() === month
+            })
+            .reduce((sum, c) => sum + Number(c.amount || 0), 0)
+
+        return { label, amount }
+    })
+
+    const maxMonthlyPayout = monthlyPayouts.reduce((m, x) => Math.max(m, x.amount), 0)
+
     return (
         <div className="flex-1 space-y-8 p-4 pt-6 md:p-8">
             <div className="flex items-center justify-between">
@@ -177,6 +251,83 @@ export default function FinancesPage() {
                         <Clock className="h-4 w-4" /> Overdue
                     </h3>
                     <div className="text-2xl font-bold mt-2 text-red-500">{invoices.filter(i => i.status === 'overdue').length}</div>
+                </div>
+            </div>
+
+            <div className="rounded-xl border bg-card p-5 space-y-5">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                        <h3 className="text-lg font-semibold">Commission Dashboard</h3>
+                        <p className="text-sm text-muted-foreground">Agent totals, paid vs pending, and monthly payouts.</p>
+                    </div>
+                    <select
+                        value={branchFilter}
+                        onChange={(e) => setBranchFilter(e.target.value)}
+                        className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+                    >
+                        <option value="all">All branches</option>
+                        {branches.map(branch => (
+                            <option key={branch.id} value={branch.id}>{branch.name}</option>
+                        ))}
+                    </select>
+                </div>
+
+                <div className="grid gap-3 md:grid-cols-2">
+                    <div className="rounded-lg border p-4">
+                        <p className="text-xs font-semibold uppercase text-muted-foreground tracking-wide">Paid vs Pending</p>
+                        <div className="mt-3 space-y-2">
+                            <div className="flex items-center justify-between text-sm">
+                                <span className="text-emerald-600 font-medium">Paid</span>
+                                <span>${paidCommissionsAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                            </div>
+                            <div className="flex items-center justify-between text-sm">
+                                <span className="text-amber-600 font-medium">Pending</span>
+                                <span>${pendingCommissionsAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="rounded-lg border p-4">
+                        <p className="text-xs font-semibold uppercase text-muted-foreground tracking-wide">Monthly Payouts</p>
+                        <div className="mt-3 space-y-2">
+                            {monthlyPayouts.map((row) => (
+                                <div key={row.label} className="space-y-1">
+                                    <div className="flex items-center justify-between text-xs">
+                                        <span>{row.label}</span>
+                                        <span>${row.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                                    </div>
+                                    <div className="h-2 rounded bg-muted overflow-hidden">
+                                        <div
+                                            className="h-2 bg-primary"
+                                            style={{ width: `${maxMonthlyPayout > 0 ? Math.max(6, (row.amount / maxMonthlyPayout) * 100) : 0}%` }}
+                                        />
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+
+                <div className="rounded-lg border p-4">
+                    <p className="text-xs font-semibold uppercase text-muted-foreground tracking-wide">Agent Commission Totals</p>
+                    <div className="mt-3 space-y-3">
+                        {byAgent.length === 0 ? (
+                            <p className="text-sm text-muted-foreground">No commission records found for this filter.</p>
+                        ) : byAgent.map((row) => (
+                            <div key={row.name} className="space-y-1">
+                                <div className="flex items-center justify-between text-sm">
+                                    <span className="font-medium">{row.name}</span>
+                                    <span>${row.total.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                                </div>
+                                <div className="h-2 rounded bg-muted overflow-hidden">
+                                    <div
+                                        className="h-2 bg-emerald-500"
+                                        style={{ width: `${maxAgentTotal > 0 ? Math.max(8, (row.total / maxAgentTotal) * 100) : 0}%` }}
+                                    />
+                                </div>
+                            </div>
+                        ))}
+                    </div>
                 </div>
             </div>
 

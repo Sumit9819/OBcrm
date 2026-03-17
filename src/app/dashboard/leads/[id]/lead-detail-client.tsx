@@ -52,9 +52,11 @@ type Props = {
     currentUserRole: string
     callLogs?: any[]
     initialMessages?: any[]
+    emailLogs?: any[]
+    whatsappLogs?: any[]
 }
 
-export function LeadDetailClient({ lead, activities, documents, applications, tasks, staffList, customFields, pipelineStages, documentTemplates, currentUserId, currentUserRole, callLogs = [], initialMessages = [] }: Props) {
+export function LeadDetailClient({ lead, activities, documents, applications, tasks, staffList, customFields, pipelineStages, documentTemplates, currentUserId, currentUserRole, callLogs = [], initialMessages = [], emailLogs = [], whatsappLogs = [] }: Props) {
     const router = useRouter()
     const [isPending, startTransition] = useTransition()
     const [messages, setMessages] = useState<any[]>(initialMessages || [])
@@ -250,6 +252,10 @@ export function LeadDetailClient({ lead, activities, documents, applications, ta
                         setShowConvert={setShowConvert}
                         setShowEmail={setShowEmail}
                         setShowWhatsapp={setShowWhatsapp}
+                        openTeamThread={() => {
+                            const key = lead.status === 'Enrolled' ? 'studentId' : 'leadId'
+                            router.push(`/dashboard/chat?${key}=${lead.id}`)
+                        }}
                         handleDelete={() => { if (confirm("Delete this lead?")) run(() => archiveLead(lead.id), () => router.push("/dashboard/leads")) }}
                         callLogsCount={localCallLogs.length}
                     />
@@ -364,6 +370,8 @@ export function LeadDetailClient({ lead, activities, documents, applications, ta
                                 setShowWhatsapp={setShowWhatsapp}
                                 setShowSms={setShowSms}
                                 setShowEmail={setShowEmail}
+                                emailLogs={emailLogs}
+                                whatsappLogs={whatsappLogs}
                             />
                             <TabMatcher lead={lead} loadingCourses={loadingCourses} matchedCourses={matchedCourses} />
                             <TabAcademics lead={lead} />

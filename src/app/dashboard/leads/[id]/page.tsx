@@ -40,6 +40,8 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
         callLogsRes,
         documentTemplatesRes,
         messagesRes,
+        emailLogsRes,
+        whatsappLogsRes,
     ] = await Promise.all([
         supabase
             .from("users")
@@ -92,7 +94,19 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
             .from("messages")
             .select("*, sender:users!messages_sender_id_fkey(first_name, last_name)")
             .eq("lead_id", id)
-            .order("created_at", { ascending: true })
+            .order("created_at", { ascending: true }),
+        supabase
+            .from("email_logs")
+            .select("id, to_email, subject, status, created_at, error_message")
+            .eq("lead_id", id)
+            .order("created_at", { ascending: false })
+            .limit(12),
+        supabase
+            .from("whatsapp_logs")
+            .select("id, to_phone, status, message, created_at, error_message")
+            .eq("lead_id", id)
+            .order("created_at", { ascending: false })
+            .limit(12)
     ])
 
     const currentUserId = user?.id || ''
@@ -113,6 +127,8 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
             currentUserRole={currentUserRole}
             callLogs={callLogsRes.data || []}
             initialMessages={messagesRes.data || []}
+            emailLogs={emailLogsRes.data || []}
+            whatsappLogs={whatsappLogsRes.data || []}
         />
     )
 }

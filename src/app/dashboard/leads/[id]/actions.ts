@@ -532,8 +532,35 @@ export async function sendWhatsappMessage(leadId: string, message: string) {
 
         if (!response.ok) {
             console.error('WhatsApp API Error:', data)
+
+            await supabase.from('whatsapp_logs').insert({
+                agency_id: profile.agency_id,
+                lead_id: leadId,
+                sender_user_id: user.id,
+                to_phone: formattedPhone,
+                provider: 'meta_whatsapp',
+                direction: 'outbound',
+                status: 'failed',
+                message,
+                error_message: data?.error?.message || 'Meta API error',
+                provider_response: data,
+            })
+
             return { error: data.error?.message || 'Failed to send WhatsApp message via Meta API' }
         }
+
+        await supabase.from('whatsapp_logs').insert({
+            agency_id: profile.agency_id,
+            lead_id: leadId,
+            sender_user_id: user.id,
+            to_phone: formattedPhone,
+            provider: 'meta_whatsapp',
+            direction: 'outbound',
+            status: 'sent',
+            message,
+            external_message_id: data?.messages?.[0]?.id || null,
+            provider_response: data,
+        })
 
         // Log the activity
         await supabase
@@ -622,13 +649,27 @@ export async function sendEmailMessage(leadId: string, subject: string, message:
         });
 
         // Send mail
-        await transporter.sendMail({
+        const sent = await transporter.sendMail({
             from: senderEmail,
             to: lead.email,
             subject: subject,
             text: message, // plain text body
             html: message.replace(/\n/g, '<br>'), // basic html body mapping
         });
+
+        await supabase.from('email_logs').insert({
+            agency_id: profile.agency_id,
+            lead_id: leadId,
+            sender_user_id: user.id,
+            to_email: lead.email,
+            subject,
+            message,
+            provider: 'gmail_smtp',
+            direction: 'outbound',
+            status: 'sent',
+            provider_message_id: sent?.messageId || null,
+            provider_response: sent || null,
+        })
 
         // Log the activity
         await supabase
@@ -654,6 +695,20 @@ export async function sendEmailMessage(leadId: string, subject: string, message:
         return { success: true }
     } catch (err: any) {
         console.error('Email sending error:', err)
+
+        await supabase.from('email_logs').insert({
+            agency_id: profile.agency_id,
+            lead_id: leadId,
+            sender_user_id: user.id,
+            to_email: lead.email,
+            subject,
+            message,
+            provider: 'gmail_smtp',
+            direction: 'outbound',
+            status: 'failed',
+            error_message: err?.message || 'Email sending failed',
+        })
+
         return { error: err.message || 'A network error occurred while sending the email' }
     }
 }

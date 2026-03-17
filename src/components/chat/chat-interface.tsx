@@ -39,6 +39,11 @@ type Channel = {
     lastMessage?: string; lastTime?: string
 }
 
+type ThreadContext = {
+    entityType: 'lead' | 'student'
+    leadId: string
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 const EMOJI_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🔥', '✅']
@@ -183,7 +188,15 @@ function MessageBubble({
 
 // ─── Main ChatInterface ────────────────────────────────────────────────────────
 
-export function ChatInterface({ currentUser, colleagues }: { currentUser: Profile; colleagues: Profile[] }) {
+export function ChatInterface({
+    currentUser,
+    colleagues,
+    threadContext,
+}: {
+    currentUser: Profile
+    colleagues: Profile[]
+    threadContext?: ThreadContext | null
+}) {
     const [channels, setChannels] = useState<Channel[]>([])
     const [activeChannel, setActiveChannel] = useState<Channel | null>(null)
     const [messages, setMessages] = useState<ChatMessage[]>([])
@@ -204,6 +217,77 @@ export function ChatInterface({ currentUser, colleagues }: { currentUser: Profil
     const scrollRef = useRef<HTMLDivElement>(null)
     const typingTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
     const supabase = createClient()
+
+    const ensureLeadThreadChannel = useCallback(async () => {
+        if (!threadContext?.leadId || !currentUser.agency_id) return null
+
+        const { data: existing } = await supabase
+            .from('chat_channels')
+            .select('id, name, channel_type, lead_id, lead:lead_id(id, first_name, last_name)')
+            .eq('agency_id', currentUser.agency_id)
+            .eq('channel_type', 'lead_thread')
+            .eq('lead_id', threadContext.leadId)
+            .maybeSingle()
+
+        if (existing) {
+            return {
+                id: existing.id,
+                name: existing.name,
+                channel_type: existing.channel_type,
+                lead_id: existing.lead_id,
+                lead: existing.lead,
+            } as Channel
+        }
+
+        const { data: leadData } = await supabase
+            .from('leads')
+            .select('id, first_name, last_name')
+            .eq('id', threadContext.leadId)
+            .eq('agency_id', currentUser.agency_id)
+            .maybeSingle()
+
+        if (!leadData?.id) {
+            toast.error('Lead thread could not be opened for this record.')
+            return null
+        }
+
+        const channelName = `${threadContext.entityType}-${leadData.first_name || 'record'}-${leadData.last_name || leadData.id}`
+            .toLowerCase()
+            .replace(/\s+/g, '-')
+            .slice(0, 64)
+
+        const { data: created, error: createError } = await supabase
+            .from('chat_channels')
+            .insert({
+                agency_id: currentUser.agency_id,
+                channel_type: 'lead_thread',
+                lead_id: leadData.id,
+                name: channelName,
+                created_by: currentUser.id,
+            })
+            .select('id, name, channel_type, lead_id, lead:lead_id(id, first_name, last_name)')
+            .single()
+
+        if (createError || !created) {
+            toast.error(createError?.message || 'Failed to create lead thread.')
+            return null
+        }
+
+        const memberIds = [...new Set([...colleagues.map(c => c.id), currentUser.id])]
+        if (memberIds.length > 0) {
+            await supabase.from('chat_members').insert(
+                memberIds.map(userId => ({ channel_id: created.id, user_id: userId }))
+            )
+        }
+
+        return {
+            id: created.id,
+            name: created.name,
+            channel_type: created.channel_type,
+            lead_id: created.lead_id,
+            lead: created.lead,
+        } as Channel
+    }, [colleagues, currentUser, threadContext])
 
     // ── Build member map ─────────────────────────────────────────
     useEffect(() => {
@@ -263,6 +347,24 @@ export function ChatInterface({ currentUser, colleagues }: { currentUser: Profil
     }, [colleagues, currentUser])
 
     useEffect(() => { loadChannels() }, [loadChannels])
+
+    useEffect(() => {
+        if (!threadContext?.leadId) return
+
+        let cancelled = false
+        ; (async () => {
+            const channel = await ensureLeadThreadChannel()
+            if (!channel || cancelled) return
+
+            setChannels(prev => {
+                const exists = prev.some(ch => ch.id === channel.id)
+                return exists ? prev : [...prev, channel]
+            })
+            setActiveChannel(channel)
+        })()
+
+        return () => { cancelled = true }
+    }, [threadContext, ensureLeadThreadChannel])
 
     // ── Fetch messages for active channel ────────────────────────
     const fetchMessages = useCallback(async (channel: Channel) => {

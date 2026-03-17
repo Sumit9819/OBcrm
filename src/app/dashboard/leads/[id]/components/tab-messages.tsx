@@ -16,6 +16,8 @@ interface TabMessagesProps {
     setShowWhatsapp: (show: boolean) => void
     setShowSms: (show: boolean) => void
     setShowEmail: (show: boolean) => void
+    emailLogs: Array<{ id: string; to_email: string; subject: string; status: string; created_at: string; error_message?: string | null }>
+    whatsappLogs: Array<{ id: string; to_phone: string; status: string; message: string; created_at: string; error_message?: string | null }>
 }
 
 export function TabMessages({
@@ -23,7 +25,9 @@ export function TabMessages({
     scrollRef,
     setShowWhatsapp,
     setShowSms,
-    setShowEmail
+    setShowEmail,
+    emailLogs,
+    whatsappLogs
 }: TabMessagesProps) {
     return (
         <TabsContent value="messages" className="m-0 focus-visible:ring-0 outline-none">
@@ -90,6 +94,43 @@ export function TabMessages({
                         >
                             <Mail className="h-3.5 w-3.5 mr-2" /> Email
                         </Button>
+                    </div>
+                    <div className="mt-4 grid gap-3 md:grid-cols-2">
+                        <div className="rounded-lg border bg-muted/20 p-3">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">WhatsApp Logs</p>
+                            <div className="mt-2 space-y-2 max-h-36 overflow-y-auto">
+                                {whatsappLogs.length === 0 ? (
+                                    <p className="text-xs text-muted-foreground">No WhatsApp logs yet.</p>
+                                ) : whatsappLogs.map((row) => (
+                                    <div key={row.id} className="rounded-md border bg-background p-2">
+                                        <p className="text-[11px] font-medium">To {row.to_phone}</p>
+                                        <p className="text-[11px] text-muted-foreground truncate">{row.message}</p>
+                                        <p className="text-[10px] text-muted-foreground mt-1">
+                                            {format(new Date(row.created_at), 'MMM dd, HH:mm')} · {row.status}
+                                            {row.error_message ? ` · ${row.error_message}` : ''}
+                                        </p>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="rounded-lg border bg-muted/20 p-3">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Email Logs</p>
+                            <div className="mt-2 space-y-2 max-h-36 overflow-y-auto">
+                                {emailLogs.length === 0 ? (
+                                    <p className="text-xs text-muted-foreground">No email logs yet.</p>
+                                ) : emailLogs.map((row) => (
+                                    <div key={row.id} className="rounded-md border bg-background p-2">
+                                        <p className="text-[11px] font-medium">To {row.to_email}</p>
+                                        <p className="text-[11px] text-muted-foreground truncate">{row.subject}</p>
+                                        <p className="text-[10px] text-muted-foreground mt-1">
+                                            {format(new Date(row.created_at), 'MMM dd, HH:mm')} · {row.status}
+                                            {row.error_message ? ` · ${row.error_message}` : ''}
+                                        </p>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>

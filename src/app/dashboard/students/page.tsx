@@ -141,11 +141,18 @@ export default async function StudentsPage() {
                                     </div>
 
                                     {/* Action */}
-                                    <Link href={`/dashboard/leads/${student.id}`}>
-                                        <Button variant="ghost" size="sm" className="gap-1.5 shrink-0">
-                                            View Profile <ArrowRight className="h-3.5 w-3.5" />
-                                        </Button>
-                                    </Link>
+                                    <div className="flex items-center gap-2 shrink-0">
+                                        <Link href={`/dashboard/chat?studentId=${student.id}`}>
+                                            <Button variant="outline" size="sm" className="gap-1.5">
+                                                Team Chat
+                                            </Button>
+                                        </Link>
+                                        <Link href={`/dashboard/leads/${student.id}`}>
+                                            <Button variant="ghost" size="sm" className="gap-1.5">
+                                                View Profile <ArrowRight className="h-3.5 w-3.5" />
+                                            </Button>
+                                        </Link>
+                                    </div>
                                 </div>
                             </CardContent>
                         </Card>

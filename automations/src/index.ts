@@ -18,6 +18,8 @@ type LeadContacts = {
 	ownerId?: string
 	assignedTo?: string
 	agencyId?: string
+	email?: string
+	name?: string
 }
 
 const trackedLeadStatuses = new Set(['Applied', 'Visa Filed', 'Visa Approved', 'Visa Denied', 'Enrolled', 'Lost'])
@@ -139,7 +141,7 @@ async function getLeadContacts(
 	if (!leadId) return {}
 	const { data, error } = await supabase
 		.from('leads')
-		.select('owner_id, assigned_to, agency_id')
+		.select('owner_id, assigned_to, agency_id, email, first_name, last_name')
 		.eq('id', leadId)
 		.maybeSingle()
 
@@ -152,6 +154,39 @@ async function getLeadContacts(
 		ownerId: asString(data.owner_id),
 		assignedTo: asString(data.assigned_to),
 		agencyId: asString(data.agency_id),
+		email: asString(data.email),
+		name: [asString(data.first_name), asString(data.last_name)].filter(Boolean).join(' ').trim() || 'Student',
+	}
+}
+
+async function insertEmailAutomationLog(
+	supabase: any,
+	entry: {
+		agencyId?: string
+		leadId?: string
+		senderUserId?: string
+		toEmail?: string
+		subject: string
+		message: string
+		status?: string
+	}
+): Promise<void> {
+	if (!entry.agencyId || !entry.toEmail || !entry.leadId) return
+
+	const { error } = await supabase.from('email_logs').insert({
+		agency_id: entry.agencyId,
+		lead_id: entry.leadId,
+		sender_user_id: entry.senderUserId || null,
+		to_email: entry.toEmail,
+		subject: entry.subject,
+		message: entry.message,
+		provider: 'automation',
+		direction: 'outbound',
+		status: entry.status || 'triggered',
+	})
+
+	if (error) {
+		console.error('Failed to insert email automation log', error.message)
 	}
 }
 
@@ -219,6 +254,18 @@ async function handleLeadUpdate(
 					link: leadLink(leadId),
 				})
 			}
+		}
+
+		if (newStatus === 'Visa Approved') {
+			const contacts = await getLeadContacts(supabase, leadId)
+			await insertEmailAutomationLog(supabase, {
+				agencyId: contacts.agencyId,
+				leadId,
+				senderUserId: actor,
+				toEmail: contacts.email,
+				subject: 'Visa Approved - Next Steps',
+				message: `${contacts.name || leadName}, your visa status is now approved. Please check your dashboard for next steps.`,
+			})
 		}
 	}
 
@@ -303,6 +350,15 @@ async function handleApplicationInsert(supabase: any, record: DbRecord): Promise
 			link: appLink(asString(record.id)),
 		})
 	}
+
+	await insertEmailAutomationLog(supabase, {
+		agencyId: contacts.agencyId,
+		leadId,
+		senderUserId: contacts.assignedTo || contacts.ownerId,
+		toEmail: contacts.email,
+		subject: 'Application Submitted',
+		message: `Your application for ${university} (${course}) has been submitted.`,
+	})
 }
 
 async function handleApplicationUpdate(
@@ -335,6 +391,17 @@ async function handleApplicationUpdate(
 			link: appLink(asString(newRecord.id)),
 		})
 	}
+
+	if (newStatus.toLowerCase().includes('offer')) {
+		await insertEmailAutomationLog(supabase, {
+			agencyId: contacts.agencyId,
+			leadId,
+			senderUserId: contacts.assignedTo || contacts.ownerId,
+			toEmail: contacts.email,
+			subject: 'Offer Letter Update',
+			message: `Your application has reached ${newStatus}. Please review your offer details with the team.`,
+		})
+	}
 }
 
 async function handleInvoiceInsert(supabase: any, record: DbRecord): Promise<void> {
@@ -356,6 +423,15 @@ async function handleInvoiceInsert(supabase: any, record: DbRecord): Promise<voi
 			link: invoiceLink(asString(record.id)),
 		})
 	}
+
+	await insertEmailAutomationLog(supabase, {
+		agencyId: contacts.agencyId || asString(record.agency_id),
+		leadId,
+		senderUserId: asString(record.created_by) || contacts.assignedTo || contacts.ownerId,
+		toEmail: contacts.email,
+		subject: 'Invoice Generated',
+		message: `A new invoice of ${amount} ${currency} has been generated for your application.`,
+	})
 }
 
 async function handleInvoiceUpdate(
@@ -386,6 +462,20 @@ async function handleInvoiceUpdate(
 			title: `Invoice marked ${newStatus}`,
 			message: `Invoice status is now ${newStatus}.`,
 			link: invoiceLink(asString(newRecord.id)),
+		})
+	}
+
+	if (newStatus === 'paid') {
+		const amount = asString(newRecord.amount) || '0'
+		const currency = asString(newRecord.currency) || 'USD'
+		await insertEmailAutomationLog(supabase, {
+			agencyId: contacts.agencyId || asString(newRecord.agency_id),
+			leadId,
+			senderUserId: asString(newRecord.created_by) || contacts.assignedTo || contacts.ownerId,
+			toEmail: contacts.email,
+			subject: 'Payment Confirmation',
+			message: `Payment of ${amount} ${currency} has been received and confirmed.`,
+			status: 'sent',
 		})
 	}
 }

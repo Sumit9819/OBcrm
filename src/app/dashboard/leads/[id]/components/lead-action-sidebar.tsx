@@ -2,8 +2,7 @@
 
 import { useState } from "react"
 import { Card, CardContent } from "@/components/ui/card"
-import { GraduationCap, UserCheck, Mail, MessageSquare, Archive, Phone, History, Clock } from "lucide-react"
-import { format } from "date-fns"
+import { GraduationCap, UserCheck, Mail, MessageSquare, Archive, Phone, Clock, Users } from "lucide-react"
 
 type Props = {
     lead: any
@@ -12,11 +11,12 @@ type Props = {
     setShowConvert: (val: boolean) => void
     setShowEmail: (val: boolean) => void
     setShowWhatsapp: (val: boolean) => void
+    openTeamThread: () => void
     handleDelete: () => void
     callLogsCount?: number
 }
 
-export function LeadActionSidebar({ lead, isPending, setShowEdit, setShowConvert, setShowEmail, setShowWhatsapp, handleDelete, callLogsCount = 0 }: Props) {
+export function LeadActionSidebar({ lead, isPending, setShowEdit, setShowConvert, setShowEmail, setShowWhatsapp, openTeamThread, handleDelete, callLogsCount = 0 }: Props) {
     const [activeTab, setActiveTab] = useState<'visits' | 'calls'>('visits')
 
     return (
@@ -71,6 +71,17 @@ export function LeadActionSidebar({ lead, isPending, setShowEdit, setShowConvert
                                 <MessageSquare className="h-4 w-4" />
                             </div>
                             <span>Send WhatsApp</span>
+                        </button>
+
+                        <button
+                            className="flex items-center gap-3 px-4 py-3 text-sm font-semibold hover:bg-slate-50 transition-colors border-b border-slate-100 text-left w-full group"
+                            onClick={openTeamThread}
+                            disabled={isPending}
+                        >
+                            <div className="p-1.5 rounded-md bg-violet-50 text-violet-600 group-hover:bg-violet-100 transition-colors">
+                                <Users className="h-4 w-4" />
+                            </div>
+                            <span>Open Team Thread</span>
                         </button>
 
                         <button

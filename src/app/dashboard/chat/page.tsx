@@ -2,7 +2,15 @@ import { ChatInterface } from "@/components/chat/chat-interface"
 import { createClient } from "@/lib/supabase/server"
 import { redirect } from "next/navigation"
 
-export default async function ChatPage() {
+export default async function ChatPage({
+    searchParams,
+}: {
+    searchParams: Promise<{ leadId?: string; studentId?: string }>
+}) {
+    const resolvedSearch = await searchParams
+    const leadThreadId = resolvedSearch.leadId || resolvedSearch.studentId
+    const threadEntity = resolvedSearch.studentId ? 'student' : 'lead'
+
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) redirect('/login')
@@ -44,6 +52,7 @@ export default async function ChatPage() {
                 <ChatInterface
                     currentUser={profile}
                     colleagues={colleagues || []}
+                    threadContext={leadThreadId ? { entityType: threadEntity, leadId: leadThreadId } : null}
                 />
             </div>
         </div>
