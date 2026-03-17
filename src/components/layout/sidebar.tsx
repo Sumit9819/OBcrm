@@ -3,6 +3,7 @@
 import * as React from "react"
 import { useState } from "react"
 import Link from "next/link"
+import { usePathname } from "next/navigation"
 import {
     BookOpen,
     ChevronDown,
@@ -23,12 +24,10 @@ import {
     Users2,
     CalendarClock,
     Ticket,
-    UserCog,
     Banknote,
     Mail,
     Coffee,
     GraduationCap,
-    Kanban,
 } from "lucide-react"
 
 import {
@@ -54,6 +53,26 @@ type NavItem = {
 type NavSection = {
     label?: string
     items: NavItem[]
+}
+
+function normalizePath(path: string) {
+    if (!path) return "/"
+    return path !== "/" && path.endsWith("/") ? path.slice(0, -1) : path
+}
+
+function isRouteActive(currentPath: string, targetPath: string) {
+    const current = normalizePath(currentPath)
+    const target = normalizePath(targetPath)
+
+    if (target === "/dashboard") return current === target
+    return current === target || current.startsWith(`${target}/`)
+}
+
+function formatRole(role: string) {
+    return role
+        .split("_")
+        .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(" ")
 }
 
 const navSections: NavSection[] = [
@@ -230,23 +249,32 @@ const navSections: NavSection[] = [
     },
 ]
 
-function CollapsibleNavGroup({ group, fg }: { group: NavItem, fg: string }) {
-    const [open, setOpen] = useState(false)
+function CollapsibleNavGroup({ group, fg, pathname }: { group: NavItem, fg: string; pathname: string }) {
+    const isGroupActive = group.items?.some(item => isRouteActive(pathname, item.url)) ?? false
+    const [open, setOpen] = useState(isGroupActive)
+
+    React.useEffect(() => {
+        if (isGroupActive) {
+            setOpen(true)
+        }
+    }, [isGroupActive])
 
     return (
-        <SidebarGroup className="px-3 py-0.5">
+        <SidebarGroup className="px-2 py-0.5">
             <SidebarMenu>
                 <SidebarMenuItem>
                     <SidebarMenuButton
+                        isActive={isGroupActive}
                         onClick={() => setOpen(!open)}
-                        className="hover:bg-white/10 transition-all rounded-md w-full justify-between h-9 group opacity-90 hover:opacity-100"
+                        className="group h-10 w-full justify-between rounded-lg px-3 text-[13px] font-medium transition-all data-[active=true]:shadow-sm"
                         style={{ color: fg }}
+                        aria-label={`${group.title} menu`}
                     >
                         <span className="flex items-center gap-3">
-                            <group.icon className="h-[18px] w-[18px] opacity-70 group-hover:opacity-100 transition-opacity" style={{ color: fg }} strokeWidth={1.5} />
-                            <span className="font-medium text-[13px]">{group.title}</span>
+                            <group.icon className="h-4 w-4 opacity-75 transition-opacity group-hover:opacity-100" style={{ color: fg }} strokeWidth={1.75} />
+                            <span className="font-semibold tracking-[0.01em]">{group.title}</span>
                         </span>
-                        <ChevronDown className={`h-3.5 w-3.5 opacity-50 transition-transform duration-200 ${open ? "rotate-180" : ""}`} style={{ color: fg }} />
+                        <ChevronDown className={`h-3.5 w-3.5 opacity-60 transition-transform duration-200 ${open ? "rotate-180" : ""}`} style={{ color: fg }} />
                     </SidebarMenuButton>
                 </SidebarMenuItem>
             </SidebarMenu>
@@ -258,8 +286,12 @@ function CollapsibleNavGroup({ group, fg }: { group: NavItem, fg: string }) {
                     <SidebarMenu>
                         {group.items?.map((item) => (
                             <SidebarMenuItem key={item.title}>
-                                <SidebarMenuButton asChild className="pl-[2.75rem] h-8 hover:bg-transparent">
-                                    <Link href={item.url} className="text-[13px] font-medium opacity-60 hover:opacity-100 transition-all" style={{ color: fg }}>
+                                <SidebarMenuButton
+                                    asChild
+                                    isActive={isRouteActive(pathname, item.url)}
+                                    className="ml-7 h-9 rounded-md px-3 text-[12px] font-medium opacity-80 transition-all hover:opacity-100"
+                                >
+                                    <Link href={item.url} style={{ color: fg }}>
                                         {item.title}
                                     </Link>
                                 </SidebarMenuButton>
@@ -272,15 +304,20 @@ function CollapsibleNavGroup({ group, fg }: { group: NavItem, fg: string }) {
     )
 }
 
-function DirectLinkItem({ group, fg }: { group: NavItem, fg: string }) {
+function DirectLinkItem({ group, fg, pathname }: { group: NavItem, fg: string; pathname: string }) {
     return (
-        <SidebarGroup className="px-3 py-0.5">
+        <SidebarGroup className="px-2 py-0.5">
             <SidebarMenu>
                 <SidebarMenuItem>
-                    <SidebarMenuButton asChild tooltip={group.title} className="hover:bg-white/10 transition-all rounded-md h-9 group opacity-90 hover:opacity-100">
+                    <SidebarMenuButton
+                        asChild
+                        isActive={isRouteActive(pathname, group.url!)}
+                        tooltip={group.title}
+                        className="group h-10 rounded-lg px-3 text-[13px] font-medium transition-all data-[active=true]:shadow-sm"
+                    >
                         <Link href={group.url!} className="flex items-center gap-3" style={{ color: fg }}>
-                            <group.icon className="h-[18px] w-[18px] opacity-70 group-hover:opacity-100 transition-opacity" style={{ color: fg }} strokeWidth={1.5} />
-                            <span className="font-medium text-[13px]">{group.title}</span>
+                            <group.icon className="h-4 w-4 opacity-75 transition-opacity group-hover:opacity-100" style={{ color: fg }} strokeWidth={1.75} />
+                            <span className="font-semibold tracking-[0.01em]">{group.title}</span>
                         </Link>
                     </SidebarMenuButton>
                 </SidebarMenuItem>
@@ -294,6 +331,8 @@ export function AppSidebar({
     logoUrl,
     sidebarColor,
     sidebarForeground,
+    sidebarActiveColor,
+    sidebarActiveForeground,
     brandName,
     showBrandName,
 }: {
@@ -301,9 +340,12 @@ export function AppSidebar({
     logoUrl?: string
     sidebarColor?: string
     sidebarForeground?: string
+    sidebarActiveColor?: string
+    sidebarActiveForeground?: string
     brandName?: string
     showBrandName?: boolean
 }) {
+    const pathname = usePathname()
     const fg = sidebarForeground || 'black'
 
     const filterItems = (items: NavItem[]) =>
@@ -311,39 +353,52 @@ export function AppSidebar({
 
     return (
         <Sidebar
-            className="border-r border-border/40 transition-colors"
-            style={sidebarColor ? {
-                '--sidebar': sidebarColor,
-                backgroundColor: sidebarColor,
-            } as React.CSSProperties : undefined}
+            className="border-r border-border/50 bg-sidebar transition-colors"
+            style={{
+                ...(sidebarColor ? {
+                    '--sidebar': sidebarColor,
+                    backgroundColor: sidebarColor,
+                } : {}),
+                ...(sidebarActiveColor ? {
+                    '--sidebar-accent': sidebarActiveColor,
+                } : {}),
+                ...(sidebarActiveForeground ? {
+                    '--sidebar-accent-foreground': sidebarActiveForeground,
+                } : {}),
+            } as React.CSSProperties}
         >
-            <SidebarHeader className="h-16 border-b px-4 flex justify-center border-border/40">
-                <div className="flex items-center gap-2.5 font-semibold min-w-0">
+            <SidebarHeader className="h-[4.5rem] border-b border-border/40 px-4 py-3">
+                <div className="flex min-w-0 items-center gap-3 rounded-xl border border-border/35 bg-white/10 px-3 py-2 backdrop-blur-sm">
                     {logoUrl ? (
-                        <div className="h-8 w-8 shrink-0 overflow-hidden flex items-center justify-center relative rounded-md">
+                        <div className="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border/40 bg-white/10 shadow-sm">
                             <img src={logoUrl} alt="Logo" className="object-contain w-full h-full" />
                         </div>
                     ) : (
-                        <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center shrink-0">
-                            <span className="text-primary-foreground font-bold text-lg leading-none">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/90 shadow-sm">
+                            <span className="text-primary-foreground text-lg font-bold leading-none">
                                 {(brandName || 'G').charAt(0).toUpperCase()}
                             </span>
                         </div>
                     )}
                     {showBrandName !== false && (
-                        <span className="text-xl tracking-tight truncate" style={{ color: fg }}>
-                            {brandName || 'GrowthCRM'}
-                        </span>
+                        <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold tracking-tight" style={{ color: fg }}>
+                                {brandName || 'GrowthCRM'}
+                            </p>
+                            <p className="truncate text-[11px] font-medium uppercase tracking-[0.08em] opacity-65" style={{ color: fg }}>
+                                {formatRole(userRole)} workspace
+                            </p>
+                        </div>
                     )}
                 </div>
             </SidebarHeader>
 
-            <SidebarContent>
+            <SidebarContent className="px-1 py-2">
                 {navSections.map((section, sIdx) => (
                     <div key={sIdx}>
                         {section.label && (
                             <SidebarGroupLabel
-                                className="px-4 pt-6 pb-2 text-[10px] font-semibold uppercase tracking-wider opacity-40"
+                                className="px-4 pb-2 pt-5 text-[10px] font-semibold uppercase tracking-[0.14em] opacity-55"
                                 style={{ color: fg }}
                             >
                                 {section.label}
@@ -351,9 +406,9 @@ export function AppSidebar({
                         )}
                         {filterItems(section.items).map((group, index) =>
                             group.url ? (
-                                <DirectLinkItem key={index} group={group} fg={fg} />
+                                <DirectLinkItem key={index} group={group} fg={fg} pathname={pathname} />
                             ) : (
-                                <CollapsibleNavGroup key={index} group={group} fg={fg} />
+                                <CollapsibleNavGroup key={index} group={group} fg={fg} pathname={pathname} />
                             )
                         )}
                     </div>

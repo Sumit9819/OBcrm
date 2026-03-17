@@ -46,11 +46,13 @@ export async function updateBranding(formData: FormData) {
     const primaryColor = formData.get('primaryColor') as string
     const sidebarColor = formData.get('sidebarColor') as string
     const sidebarTextColor = formData.get('sidebarTextColor') as string
+    const sidebarActiveColor = formData.get('sidebarActiveColor') as string
     const showBrandName = formData.get('showBrandName') === 'true'
 
     const updates: Record<string, any> = {}
     if (primaryColor) updates.branding_primary_color = primaryColor
     if (sidebarColor) updates.sidebar_color = sidebarColor
+    if (sidebarActiveColor) updates.sidebar_active_color = sidebarActiveColor
     // Allow empty string to reset to auto-detect
     updates.sidebar_text_color = sidebarTextColor || null
     updates.show_brand_name = showBrandName

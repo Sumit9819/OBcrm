@@ -25,6 +25,7 @@ export default function SettingsPage() {
     const [primaryColor, setPrimaryColor] = useState("#0ea5e9")
     const [sidebarColor, setSidebarColor] = useState("#ffffff")
     const [sidebarTextColor, setSidebarTextColor] = useState("")
+    const [sidebarActiveColor, setSidebarActiveColor] = useState("#e2e8f0")
     const [showBrandName, setShowBrandName] = useState(true)
     const [useCustomTextColor, setUseCustomTextColor] = useState(false)
 
@@ -63,6 +64,8 @@ export default function SettingsPage() {
                 setCompanyName(agencyData.company_name || "")
                 setPrimaryColor(agencyData.branding_primary_color || "#0ea5e9")
                 setSidebarColor(agencyData.sidebar_color || "#ffffff")
+                const defaultActiveColor = getContrastColor(agencyData.sidebar_color || "#ffffff") === 'black' ? '#e2e8f0' : '#334155'
+                setSidebarActiveColor(agencyData.sidebar_active_color || defaultActiveColor)
                 setShowBrandName(agencyData.show_brand_name !== false)
                 setDomainValue(agencyData.custom_domain || "")
                 if (agencyData.sidebar_text_color) {
@@ -102,6 +105,7 @@ export default function SettingsPage() {
         fd.set('primaryColor', primaryColor)
         fd.set('sidebarColor', sidebarColor)
         fd.set('sidebarTextColor', useCustomTextColor ? sidebarTextColor : '')
+        fd.set('sidebarActiveColor', sidebarActiveColor)
         fd.set('showBrandName', String(showBrandName))
         const result = await updateBranding(fd)
         if (result.error) toast.error(result.error)
@@ -279,6 +283,16 @@ export default function SettingsPage() {
                                             <Input value={sidebarColor} onChange={e => setSidebarColor(e.target.value)} className="font-mono text-sm" />
                                         </div>
                                     </div>
+                                    <div className="space-y-2">
+                                        <Label className="text-xs text-muted-foreground">Selected Menu Color</Label>
+                                        <div className="flex gap-2">
+                                            <input type="color" value={sidebarActiveColor} onChange={e => setSidebarActiveColor(e.target.value)} className="w-10 h-10 rounded-md border cursor-pointer" />
+                                            <Input value={sidebarActiveColor} onChange={e => setSidebarActiveColor(e.target.value)} className="font-mono text-sm" />
+                                        </div>
+                                        <p className="text-[11px] text-muted-foreground">
+                                            Controls the highlight color of the currently selected sidebar menu.
+                                        </p>
+                                    </div>
                                 </div>
                             </div>
 
@@ -325,7 +339,14 @@ export default function SettingsPage() {
                                         {showBrandName && <span className="truncate">{companyName || 'GrowthCRM'}</span>}
                                     </div>
                                     {['Dashboard', 'Leads', 'Students', 'Settings'].map(n => (
-                                        <div key={n} className="flex items-center gap-2 opacity-80 px-1 py-0.5 rounded hover:opacity-100 text-xs">
+                                        <div
+                                            key={n}
+                                            className="flex items-center gap-2 px-1 py-1 rounded text-xs"
+                                            style={n === 'Dashboard' ? {
+                                                backgroundColor: sidebarActiveColor,
+                                                color: getContrastColor(sidebarActiveColor),
+                                            } : { opacity: 0.8 }}
+                                        >
                                             <div className="w-3 h-3 rounded bg-current/30" />
                                             {n}
                                         </div>

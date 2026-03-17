@@ -18,6 +18,8 @@ export default async function DashboardLayout({
     let logoUrl = ''
     let sidebarColor = ''
     let sidebarForeground = 'black'
+    let sidebarActiveColor = '#e2e8f0'
+    let sidebarActiveForeground = 'black'
     let brandName = 'GrowthCRM'
     let showBrandName = true
 
@@ -33,7 +35,7 @@ export default async function DashboardLayout({
         if (profile?.agency_id) {
             const { data: agency } = await supabase
                 .from('agencies')
-                .select('logo_url, sidebar_color, sidebar_text_color, company_name, show_brand_name')
+                .select('logo_url, sidebar_color, sidebar_text_color, sidebar_active_color, company_name, show_brand_name')
                 .eq('id', profile.agency_id)
                 .single()
             if (agency) {
@@ -43,6 +45,9 @@ export default async function DashboardLayout({
                 showBrandName = agency.show_brand_name !== false // default true
                 // Use manual text color if set, otherwise auto-detect from bg
                 sidebarForeground = agency.sidebar_text_color || getContrastColor(sidebarColor)
+                const fallbackActiveColor = sidebarForeground === 'black' ? '#e2e8f0' : '#334155'
+                sidebarActiveColor = agency.sidebar_active_color || fallbackActiveColor
+                sidebarActiveForeground = getContrastColor(sidebarActiveColor)
             }
         }
     }
@@ -60,6 +65,8 @@ export default async function DashboardLayout({
                     logoUrl={logoUrl}
                     sidebarColor={sidebarColor}
                     sidebarForeground={sidebarForeground}
+                    sidebarActiveColor={sidebarActiveColor}
+                    sidebarActiveForeground={sidebarActiveForeground}
                     brandName={brandName}
                     showBrandName={showBrandName}
                 />
