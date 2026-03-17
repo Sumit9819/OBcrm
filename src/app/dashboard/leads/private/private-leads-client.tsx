@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import {
     Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table"
@@ -14,7 +14,7 @@ import {
 import {
     Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select"
-import { Globe, Lock, MoreHorizontal, Search, Plus, Filter, LayoutGrid } from "lucide-react"
+import { Globe, Lock, MoreHorizontal, Search, Plus, LayoutGrid, Flame } from "lucide-react"
 import Link from "next/link"
 import { format } from "date-fns"
 import { ImportLeadsDialog } from "@/components/leads/import-leads-dialog"
@@ -23,6 +23,9 @@ type Lead = {
     id: string; first_name: string; last_name: string; email?: string; phone?: string
     course_interest?: string; destination_country?: string
     status: string; is_shared_with_company: boolean; created_at: string
+    lead_score?: number | null
+    next_followup_at?: string | null
+    assigned_to?: string | null
 }
 
 const statusColors: Record<string, string> = {
@@ -32,20 +35,48 @@ const statusColors: Record<string, string> = {
     Offer: 'bg-orange-500/10 text-orange-600',
     Visa: 'bg-indigo-500/10 text-indigo-600',
     Enrolled: 'bg-emerald-500/10 text-emerald-600',
+    Lost: 'bg-rose-500/10 text-rose-600',
 }
+
+const DEFAULT_STATUSES = ["New", "Contacted", "Application", "Offer", "Visa", "Enrolled", "Lost"]
 
 export function PrivateLeadsClient({ initialLeads }: { initialLeads: Lead[] }) {
     const [search, setSearch] = useState("")
     const [statusFilter, setStatusFilter] = useState("all")
     const [visFilter, setVisFilter] = useState("all")
+    const [quickView, setQuickView] = useState<"all" | "today" | "hot" | "unassigned" | "lost">("all")
+    const [page, setPage] = useState(1)
+    const PAGE_SIZE = 30
+
+    const startOfToday = new Date()
+    startOfToday.setHours(0, 0, 0, 0)
+    const endOfToday = new Date(startOfToday)
+    endOfToday.setDate(endOfToday.getDate() + 1)
+
+    const statusOptions = Array.from(new Set([...DEFAULT_STATUSES, ...initialLeads.map(l => l.status).filter(Boolean)]))
 
     const filtered = initialLeads.filter(l => {
         const txt = `${l.first_name} ${l.last_name} ${l.email || ''} ${l.phone || ''} ${l.course_interest || ''}`.toLowerCase()
         const matchSearch = !search || txt.includes(search.toLowerCase())
         const matchStatus = statusFilter === 'all' || l.status === statusFilter
         const matchVis = visFilter === 'all' || (visFilter === 'shared' ? l.is_shared_with_company : !l.is_shared_with_company)
-        return matchSearch && matchStatus && matchVis
+        const nextFollowup = l.next_followup_at ? new Date(l.next_followup_at) : null
+        const matchQuick =
+            quickView === "all" ? true :
+                quickView === "today" ? !!nextFollowup && nextFollowup >= startOfToday && nextFollowup < endOfToday :
+                    quickView === "hot" ? Number(l.lead_score || 0) >= 67 :
+                        quickView === "unassigned" ? !l.assigned_to :
+                            l.status === "Lost"
+        return matchSearch && matchStatus && matchVis && matchQuick
     })
+
+    const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
+    const currentPage = Math.min(page, totalPages)
+    const paginated = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
+
+    useEffect(() => {
+        setPage(1)
+    }, [search, statusFilter, visFilter, quickView])
 
     return (
         <div className="flex-1 space-y-6 p-4 pt-6 md:p-8">
@@ -86,7 +117,7 @@ export function PrivateLeadsClient({ initialLeads }: { initialLeads: Lead[] }) {
                     <SelectTrigger className="w-40"><SelectValue placeholder="Status" /></SelectTrigger>
                     <SelectContent>
                         <SelectItem value="all">All Statuses</SelectItem>
-                        {["New", "Contacted", "Application", "Offer", "Visa", "Enrolled"].map(s => (
+                        {statusOptions.map(s => (
                             <SelectItem key={s} value={s}>{s}</SelectItem>
                         ))}
                     </SelectContent>
@@ -99,11 +130,21 @@ export function PrivateLeadsClient({ initialLeads }: { initialLeads: Lead[] }) {
                         <SelectItem value="shared">Shared</SelectItem>
                     </SelectContent>
                 </Select>
-                {(search || statusFilter !== 'all' || visFilter !== 'all') && (
-                    <Button variant="ghost" onClick={() => { setSearch(""); setStatusFilter("all"); setVisFilter("all") }}>
+                {(search || statusFilter !== 'all' || visFilter !== 'all' || quickView !== 'all') && (
+                    <Button variant="ghost" onClick={() => { setSearch(""); setStatusFilter("all"); setVisFilter("all"); setQuickView("all") }}>
                         Clear
                     </Button>
                 )}
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+                <Button variant={quickView === "all" ? "default" : "outline"} size="sm" onClick={() => setQuickView("all")}>All</Button>
+                <Button variant={quickView === "today" ? "default" : "outline"} size="sm" onClick={() => setQuickView("today")}>Today&apos;s Follow-ups</Button>
+                <Button variant={quickView === "hot" ? "default" : "outline"} size="sm" onClick={() => setQuickView("hot")} className="gap-1.5">
+                    <Flame className="h-3.5 w-3.5" /> Hot Leads
+                </Button>
+                <Button variant={quickView === "unassigned" ? "default" : "outline"} size="sm" onClick={() => setQuickView("unassigned")}>Unassigned</Button>
+                <Button variant={quickView === "lost" ? "default" : "outline"} size="sm" onClick={() => setQuickView("lost")}>Lost</Button>
             </div>
 
             {/* Table */}
@@ -115,15 +156,17 @@ export function PrivateLeadsClient({ initialLeads }: { initialLeads: Lead[] }) {
                             <TableHead>Student Name</TableHead>
                             <TableHead>Course Interest</TableHead>
                             <TableHead>Status</TableHead>
+                            <TableHead>Score</TableHead>
+                            <TableHead>Next Action</TableHead>
                             <TableHead>Visibility</TableHead>
                             <TableHead>Date Added</TableHead>
                             <TableHead className="text-right">Actions</TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
-                        {filtered.length === 0 ? (
+                        {paginated.length === 0 ? (
                             <TableRow>
-                                <TableCell colSpan={7} className="h-32 text-center text-muted-foreground">
+                                <TableCell colSpan={9} className="h-32 text-center text-muted-foreground">
                                     {search ? "No leads match your search." : "No leads yet."}
                                     {!search && (
                                         <div className="mt-2">
@@ -134,9 +177,9 @@ export function PrivateLeadsClient({ initialLeads }: { initialLeads: Lead[] }) {
                                     )}
                                 </TableCell>
                             </TableRow>
-                        ) : filtered.map((lead, i) => (
+                        ) : paginated.map((lead, i) => (
                             <TableRow key={lead.id} className={`hover:bg-muted/30 ${i % 2 === 0 ? '' : 'bg-slate-50/50'}`}>
-                                <TableCell className="text-muted-foreground font-medium text-sm">{i + 1}</TableCell>
+                                <TableCell className="text-muted-foreground font-medium text-sm">{(currentPage - 1) * PAGE_SIZE + i + 1}</TableCell>
                                 <TableCell>
                                     <div className="flex flex-col">
                                         <Link href={`/dashboard/leads/${lead.id}`} className="font-medium text-sm hover:text-primary hover:underline">
@@ -155,6 +198,19 @@ export function PrivateLeadsClient({ initialLeads }: { initialLeads: Lead[] }) {
                                     <Badge className={`text-xs font-semibold border-none shadow-none ${statusColors[lead.status] || 'bg-slate-100 text-slate-600'}`}>
                                         {lead.status}
                                     </Badge>
+                                </TableCell>
+                                <TableCell>
+                                    <span className={`text-xs font-semibold px-2 py-1 rounded-full ${Number(lead.lead_score || 0) >= 67
+                                        ? "bg-rose-100 text-rose-700"
+                                        : Number(lead.lead_score || 0) >= 34
+                                            ? "bg-amber-100 text-amber-700"
+                                            : "bg-slate-100 text-slate-700"
+                                        }`}>
+                                        {lead.lead_score ?? 0}
+                                    </span>
+                                </TableCell>
+                                <TableCell className="text-muted-foreground text-xs">
+                                    {lead.next_followup_at ? format(new Date(lead.next_followup_at), 'MMM dd, p') : 'No follow-up'}
                                 </TableCell>
                                 <TableCell>
                                     {lead.is_shared_with_company ? (
@@ -190,6 +246,28 @@ export function PrivateLeadsClient({ initialLeads }: { initialLeads: Lead[] }) {
                         ))}
                     </TableBody>
                 </Table>
+            </div>
+
+            <div className="flex items-center justify-between">
+                <p className="text-sm text-muted-foreground">Page {currentPage} of {totalPages}</p>
+                <div className="flex items-center gap-2">
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={currentPage <= 1}
+                        onClick={() => setPage(p => Math.max(1, p - 1))}
+                    >
+                        Previous
+                    </Button>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={currentPage >= totalPages}
+                        onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                    >
+                        Next
+                    </Button>
+                </div>
             </div>
         </div>
     )

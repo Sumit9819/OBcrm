@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/dialog"
 import {
     Search, Users, Globe, UserCheck, CheckSquare, Square, Upload,
-    RefreshCw, UserCog, TrendingUp, Download, Plus, LayoutGrid,
+    RefreshCw, UserCog, Download, Plus, LayoutGrid, Flame,
 } from "lucide-react"
 import { format } from "date-fns"
 import Link from "next/link"
@@ -32,9 +32,10 @@ const statusColors: Record<string, string> = {
     Offer: "bg-orange-100 text-orange-700",
     Visa: "bg-indigo-100 text-indigo-700",
     Enrolled: "bg-emerald-100 text-emerald-700",
+    Lost: "bg-rose-100 text-rose-700",
 }
 
-const STATUSES = ["New", "Contacted", "Application", "Offer", "Visa", "Enrolled"]
+const DEFAULT_STATUSES = ["New", "Contacted", "Application", "Offer", "Visa", "Enrolled", "Lost"]
 
 // ── CSV Lead Import helpers ──────────────────────────────────────
 function parseCSV(text: string): Record<string, string>[] {
@@ -53,11 +54,15 @@ export default function AllLeadsPage() {
     const [leads, setLeads] = useState<any[]>([])
     const [agents, setAgents] = useState<any[]>([])
     const [staff, setStaff] = useState<any[]>([])
+    const [currentUserId, setCurrentUserId] = useState("")
     const [loading, setLoading] = useState(true)
     const [search, setSearch] = useState("")
     const [agentFilter, setAgentFilter] = useState("all")
     const [statusFilter, setStatusFilter] = useState("all")
     const [visibilityFilter, setVisibilityFilter] = useState("all")
+    const [quickView, setQuickView] = useState<"all" | "my" | "today" | "hot" | "unassigned" | "lost">("all")
+    const [page, setPage] = useState(1)
+    const PAGE_SIZE = 50
 
     // Bulk action state
     const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -81,6 +86,7 @@ export default function AllLeadsPage() {
         setLoading(true)
         const { data: { user } } = await supabase.auth.getUser()
         if (!user) return
+        setCurrentUserId(user.id)
 
         const { data: profile } = await supabase.from("users").select("role, agency_id").eq("id", user.id).single()
         if (!["super_admin", "agency_admin"].includes(profile?.role)) {
@@ -92,7 +98,8 @@ export default function AllLeadsPage() {
             supabase.from("leads").select(`
                 *,
                 owner:users!leads_owner_id_fkey(id, first_name, last_name),
-                referrer:users!leads_referred_by_fkey(id, first_name, last_name)
+                referrer:users!leads_referred_by_fkey(id, first_name, last_name),
+                assignee:users!leads_assigned_to_fkey(id, first_name, last_name)
             `).order("created_at", { ascending: false }),
             supabase.from("users").select("id, first_name, last_name").eq("role", "agent"),
             supabase.from("users").select("id, first_name, last_name, job_title").not("role", "in", '("agent","student")'),
@@ -113,6 +120,13 @@ export default function AllLeadsPage() {
 
     useEffect(() => { load() }, [load])
 
+    const startOfToday = new Date()
+    startOfToday.setHours(0, 0, 0, 0)
+    const endOfToday = new Date(startOfToday)
+    endOfToday.setDate(endOfToday.getDate() + 1)
+
+    const statusOptions = Array.from(new Set([...DEFAULT_STATUSES, ...leads.map(l => l.status).filter(Boolean)]))
+
     const filtered = leads.filter(l => {
         const name = `${l.first_name} ${l.last_name} ${l.email || ""} ${l.phone || ""}`.toLowerCase()
         const matchSearch = name.includes(search.toLowerCase())
@@ -121,16 +135,34 @@ export default function AllLeadsPage() {
         const matchVisibility = visibilityFilter === "all" ||
             (visibilityFilter === "shared" && l.is_shared_with_company) ||
             (visibilityFilter === "private" && !l.is_shared_with_company)
-        return matchSearch && matchAgent && matchStatus && matchVisibility
+
+        const nextFollowup = l.next_followup_at ? new Date(l.next_followup_at) : null
+        const matchQuickView =
+            quickView === "all" ? true :
+                quickView === "my" ? l.assigned_to === currentUserId :
+                    quickView === "today" ? !!nextFollowup && nextFollowup >= startOfToday && nextFollowup < endOfToday :
+                        quickView === "hot" ? Number(l.lead_score || 0) >= 67 :
+                            quickView === "unassigned" ? !l.assigned_to :
+                                l.status === "Lost"
+
+        return matchSearch && matchAgent && matchStatus && matchVisibility && matchQuickView
     })
 
-    const allPageSelected = filtered.length > 0 && filtered.every(l => selected.has(l.id))
+    const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
+    const currentPage = Math.min(page, totalPages)
+    const paginated = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
+
+    useEffect(() => {
+        setPage(1)
+    }, [search, agentFilter, statusFilter, visibilityFilter, quickView])
+
+    const allPageSelected = paginated.length > 0 && paginated.every(l => selected.has(l.id))
 
     const toggleAll = () => {
         if (allPageSelected) {
-            setSelected(prev => { const n = new Set(prev); filtered.forEach(l => n.delete(l.id)); return n })
+            setSelected(prev => { const n = new Set(prev); paginated.forEach(l => n.delete(l.id)); return n })
         } else {
-            setSelected(prev => { const n = new Set(prev); filtered.forEach(l => n.add(l.id)); return n })
+            setSelected(prev => { const n = new Set(prev); paginated.forEach(l => n.add(l.id)); return n })
         }
     }
 
@@ -310,7 +342,7 @@ export default function AllLeadsPage() {
                     <SelectTrigger className="w-full md:w-44"><SelectValue placeholder="Status" /></SelectTrigger>
                     <SelectContent>
                         <SelectItem value="all">All Statuses</SelectItem>
-                        {STATUSES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                        {statusOptions.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
                     </SelectContent>
                 </Select>
                 <Select value={visibilityFilter} onValueChange={setVisibilityFilter}>
@@ -323,6 +355,17 @@ export default function AllLeadsPage() {
                 </Select>
             </div>
 
+            <div className="flex flex-wrap gap-2">
+                <Button variant={quickView === "all" ? "default" : "outline"} size="sm" onClick={() => setQuickView("all")}>All</Button>
+                <Button variant={quickView === "my" ? "default" : "outline"} size="sm" onClick={() => setQuickView("my")}>My Leads</Button>
+                <Button variant={quickView === "today" ? "default" : "outline"} size="sm" onClick={() => setQuickView("today")}>Today&apos;s Follow-ups</Button>
+                <Button variant={quickView === "hot" ? "default" : "outline"} size="sm" onClick={() => setQuickView("hot")} className="gap-1.5">
+                    <Flame className="h-3.5 w-3.5" /> Hot Leads
+                </Button>
+                <Button variant={quickView === "unassigned" ? "default" : "outline"} size="sm" onClick={() => setQuickView("unassigned")}>Unassigned</Button>
+                <Button variant={quickView === "lost" ? "default" : "outline"} size="sm" onClick={() => setQuickView("lost")}>Lost</Button>
+            </div>
+
             {/* Bulk action bar */}
             {selected.size > 0 && (
                 <div className="flex items-center gap-3 flex-wrap p-3 bg-primary/5 border border-primary/20 rounded-lg">
@@ -330,7 +373,7 @@ export default function AllLeadsPage() {
                     <Select value={bulkStatus} onValueChange={setBulkStatus}>
                         <SelectTrigger className="w-44 h-8 text-sm"><SelectValue placeholder="Set status..." /></SelectTrigger>
                         <SelectContent>
-                            {STATUSES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                            {statusOptions.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
                         </SelectContent>
                     </Select>
                     <Select value={bulkAssignTo} onValueChange={setBulkAssignTo}>
@@ -357,9 +400,15 @@ export default function AllLeadsPage() {
                         <CardTitle className="text-sm font-bold text-white uppercase">
                             Showing {filtered.length} of {leads.length} leads
                         </CardTitle>
-                        {(search || agentFilter !== "all" || statusFilter !== "all" || visibilityFilter !== "all") && (
+                        {(search || agentFilter !== "all" || statusFilter !== "all" || visibilityFilter !== "all" || quickView !== "all") && (
                             <button
-                                onClick={() => { setSearch(""); setAgentFilter("all"); setStatusFilter("all"); setVisibilityFilter("all") }}
+                                onClick={() => {
+                                    setSearch("")
+                                    setAgentFilter("all")
+                                    setStatusFilter("all")
+                                    setVisibilityFilter("all")
+                                    setQuickView("all")
+                                }}
                                 className="text-xs text-indigo-200 hover:text-white"
                             >
                                 Clear filters
@@ -382,6 +431,9 @@ export default function AllLeadsPage() {
                                 <TableHead>Name</TableHead>
                                 <TableHead>Contact</TableHead>
                                 <TableHead>Status</TableHead>
+                                <TableHead>Score</TableHead>
+                                <TableHead>Assigned To</TableHead>
+                                <TableHead>Next Action</TableHead>
                                 <TableHead>Agent (Referrer)</TableHead>
                                 <TableHead>Destination</TableHead>
                                 <TableHead>Created</TableHead>
@@ -389,10 +441,10 @@ export default function AllLeadsPage() {
                         </TableHeader>
                         <TableBody>
                             {loading ? (
-                                <TableRow><TableCell colSpan={8} className="text-center py-16 text-muted-foreground">Loading leads...</TableCell></TableRow>
-                            ) : filtered.length === 0 ? (
-                                <TableRow><TableCell colSpan={8} className="text-center py-16 text-muted-foreground">No leads match your filters.</TableCell></TableRow>
-                            ) : filtered.map((lead, i) => (
+                                <TableRow><TableCell colSpan={11} className="text-center py-16 text-muted-foreground">Loading leads...</TableCell></TableRow>
+                            ) : paginated.length === 0 ? (
+                                <TableRow><TableCell colSpan={11} className="text-center py-16 text-muted-foreground">No leads match your filters.</TableCell></TableRow>
+                            ) : paginated.map((lead, i) => (
                                 <TableRow
                                     key={lead.id}
                                     className={`${i % 2 === 0 ? "bg-white" : "bg-slate-50/50"} ${selected.has(lead.id) ? "bg-primary/5" : ""}`}
@@ -404,7 +456,7 @@ export default function AllLeadsPage() {
                                                 : <Square className="h-4 w-4 text-muted-foreground" />}
                                         </button>
                                     </TableCell>
-                                    <TableCell className="font-medium text-muted-foreground">{i + 1}</TableCell>
+                                    <TableCell className="font-medium text-muted-foreground">{(currentPage - 1) * PAGE_SIZE + i + 1}</TableCell>
                                     <TableCell>
                                         <Link href={`/dashboard/leads/${lead.id}`} className="font-medium text-blue-600 hover:underline text-sm">
                                             {lead.first_name} {lead.last_name}
@@ -418,6 +470,22 @@ export default function AllLeadsPage() {
                                         <Badge className={`text-[10px] shadow-none border-none ${statusColors[lead.status] || "bg-slate-100 text-slate-600"}`}>
                                             {lead.status}
                                         </Badge>
+                                    </TableCell>
+                                    <TableCell>
+                                        <span className={`text-xs font-semibold px-2 py-1 rounded-full ${Number(lead.lead_score || 0) >= 67
+                                            ? "bg-rose-100 text-rose-700"
+                                            : Number(lead.lead_score || 0) >= 34
+                                                ? "bg-amber-100 text-amber-700"
+                                                : "bg-slate-100 text-slate-700"
+                                            }`}>
+                                            {lead.lead_score ?? 0}
+                                        </span>
+                                    </TableCell>
+                                    <TableCell className="text-sm text-muted-foreground">
+                                        {lead.assignee ? `${lead.assignee.first_name} ${lead.assignee.last_name}` : "Unassigned"}
+                                    </TableCell>
+                                    <TableCell className="text-xs text-muted-foreground">
+                                        {lead.next_followup_at ? format(new Date(lead.next_followup_at), "MMM dd, p") : "No follow-up"}
                                     </TableCell>
                                     <TableCell>
                                         <div className="flex items-center gap-1.5 text-sm">
@@ -440,6 +508,30 @@ export default function AllLeadsPage() {
                     </Table>
                 </CardContent>
             </Card>
+
+            <div className="flex items-center justify-between">
+                <p className="text-sm text-muted-foreground">
+                    Page {currentPage} of {totalPages}
+                </p>
+                <div className="flex items-center gap-2">
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={currentPage <= 1}
+                        onClick={() => setPage(p => Math.max(1, p - 1))}
+                    >
+                        Previous
+                    </Button>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={currentPage >= totalPages}
+                        onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                    >
+                        Next
+                    </Button>
+                </div>
+            </div>
 
             {/* Add Lead Dialog */}
             <Dialog open={showAddLead} onOpenChange={setShowAddLead}>

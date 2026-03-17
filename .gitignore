@@ -44,3 +44,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# local MCP and temporary scratch files
+.vscode/mcp.json
+nul
+temp_extract_pdf.py
+ts_errors.txt

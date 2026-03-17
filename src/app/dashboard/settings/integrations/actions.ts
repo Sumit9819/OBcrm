@@ -30,7 +30,7 @@ export async function getAgencyIntegrations() {
  * Save or Update an integration
  */
 export async function saveIntegration(
-    provider: 'google' | 'whatsapp',
+    provider: 'google' | 'whatsapp' | 'twilio',
     credentials: {
         accessToken?: string;
         refreshToken?: string;
@@ -79,7 +79,7 @@ export async function saveIntegration(
 /**
  * Disconnect an integration
  */
-export async function removeIntegration(provider: 'google' | 'whatsapp') {
+export async function removeIntegration(provider: 'google' | 'whatsapp' | 'twilio') {
     const supabase = await createClient()
 
     const { data: { user } } = await supabase.auth.getUser()

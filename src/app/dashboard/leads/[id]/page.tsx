@@ -7,6 +7,14 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
 
+    const { data: currentUserProfile } = user
+        ? await supabase
+            .from('users')
+            .select('role')
+            .eq('id', user.id)
+            .single()
+        : { data: null }
+
     // Fetch lead first (we need agency_id for subsequent queries)
     const { data: lead, error } = await supabase
         .from("leads")
@@ -31,6 +39,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
         pipelineStagesRes,
         callLogsRes,
         documentTemplatesRes,
+        messagesRes,
     ] = await Promise.all([
         supabase
             .from("users")
@@ -78,10 +87,16 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
         supabase
             .from("document_templates")
             .select("*")
-            .eq("agency_id", lead.agency_id)
+            .eq("agency_id", lead.agency_id),
+        supabase
+            .from("messages")
+            .select("*, sender:users!messages_sender_id_fkey(first_name, last_name)")
+            .eq("lead_id", id)
+            .order("created_at", { ascending: true })
     ])
 
     const currentUserId = user?.id || ''
+    const currentUserRole = currentUserProfile?.role || ''
 
     return (
         <LeadDetailClient
@@ -95,8 +110,9 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
             pipelineStages={pipelineStagesRes.data || []}
             documentTemplates={documentTemplatesRes.data || []}
             currentUserId={currentUserId}
+            currentUserRole={currentUserRole}
             callLogs={callLogsRes.data || []}
+            initialMessages={messagesRes.data || []}
         />
     )
 }
-

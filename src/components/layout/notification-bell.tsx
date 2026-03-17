@@ -71,6 +71,13 @@ export function NotificationBell() {
             setUserId(user.id)
             await fetchNotifications(user.id)
 
+            // Request Desktop Notification Permission if supported
+            if (typeof window !== 'undefined' && 'Notification' in window) {
+                if (Notification.permission === 'default') {
+                    Notification.requestPermission()
+                }
+            }
+
             // Real-time: new notifications
             realtimeChannel = supabase
                 .channel(`notifs_${user.id}`)
@@ -81,11 +88,24 @@ export function NotificationBell() {
                     const n = payload.new as Notification
                     setNotifications(prev => [n, ...prev].slice(0, 20))
                     setUnreadCount(prev => prev + 1)
-                    // Also show a toast for immediate feedback
+
+                    // Show a toast for immediate feedback if app is active
                     toast(n.title, {
                         description: n.message ? n.message.slice(0, 80) : undefined,
                         action: n.link ? { label: 'View', onClick: () => router.push(n.link!) } : undefined,
                     })
+
+                    // If tab is hidden (in background), trigger desktop notification
+                    if (typeof document !== 'undefined' && document.hidden && 'Notification' in window && Notification.permission === 'granted') {
+                        const notification = new Notification(n.title, {
+                            body: n.message || "You have a new notification in GrowthCRM",
+                            icon: '/favicon.ico'
+                        })
+                        notification.onclick = () => {
+                            window.focus()
+                            if (n.link) router.push(n.link)
+                        }
+                    }
                 })
                 .subscribe()
         }

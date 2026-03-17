@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import Link from "next/link"
 import { AddEventDialog } from "@/components/dashboard/events/add-event-dialog"
+import { SummaryCards } from "@/components/dashboard/summary-cards"
 
 export default async function DashboardPage() {
     const supabase = await createClient()
@@ -68,28 +69,11 @@ export default async function DashboardPage() {
                     </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    {[
-                        { title: "TOTAL REVENUE", value: `$${totalRevenue.toLocaleString()}`, icon: DollarSign, href: "/dashboard/finances" },
-                        { title: "THIS MONTH", value: `$${thisMonthRevenue.toLocaleString()}`, icon: TrendingUp, href: "/dashboard/finances" },
-                        { title: "PENDING INVOICES", value: String(pending), icon: FileText, href: "/dashboard/finances" },
-                    ].map((stat, i) => (
-                        <Link key={i} href={stat.href}>
-                            <Card className="shadow-none border border-slate-200 hover:border-slate-300 transition-all cursor-pointer group rounded-xl">
-                                <CardContent className="p-5 flex flex-col gap-3">
-                                    <div className="flex justify-between items-center text-slate-500">
-                                        <p className="text-[11px] font-semibold uppercase tracking-wider">{stat.title}</p>
-                                        <stat.icon className="h-4 w-4 text-slate-400 group-hover:text-slate-600 transition-colors" />
-                                    </div>
-                                    <div className="flex items-end justify-between">
-                                        <h4 className="text-3xl font-bold tracking-tight text-slate-800">{stat.value}</h4>
-                                        <ArrowUpRight className="h-4 w-4 text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity mb-1" />
-                                    </div>
-                                </CardContent>
-                            </Card>
-                        </Link>
-                    ))}
-                </div>
+                <SummaryCards className="grid grid-cols-1 md:grid-cols-3 gap-4 lg:gap-6" stats={[
+                    { title: "TOTAL REVENUE", value: `$${totalRevenue.toLocaleString()}`, icon: "dollar", href: "/dashboard/finances" },
+                    { title: "THIS MONTH", value: `$${thisMonthRevenue.toLocaleString()}`, icon: "trending", href: "/dashboard/finances" },
+                    { title: "PENDING INVOICES", value: String(pending), icon: "file", href: "/dashboard/finances" },
+                ]} />
 
                 {/* Bottom Widgets Row */}
                 <div className="grid lg:grid-cols-3 gap-6 pb-12">
@@ -229,12 +213,12 @@ export default async function DashboardPage() {
             agentStats = agents.slice(0, 6).map(a => ({ ...a, leadCount: countMap[a.id] ?? 0 }))
         }
 
-        const stats = [
-            { title: "TEAM MEMBERS", value: String(teamRes.count ?? 0), icon: Users, href: "/dashboard/settings/employees" },
-            { title: "TOTAL LEADS", value: String(leadsRes.count ?? 0), icon: TrendingUp, href: "/dashboard/leads/all" },
-            { title: "APPLICATIONS", value: String(appsRes.count ?? 0), icon: Briefcase, href: "/dashboard/applications/offers" },
-            { title: "CALL LOGS", value: String(callsRes.count ?? 0), icon: Phone, href: "/dashboard/calls" },
-            { title: "REVENUE", value: `$${totalRevenue.toLocaleString()}`, icon: DollarSign, href: "/dashboard/finances" },
+        const stats: any = [
+            { title: "TEAM MEMBERS", value: String(teamRes.count ?? 0), icon: "users", href: "/dashboard/settings/employees" },
+            { title: "TOTAL LEADS", value: String(leadsRes.count ?? 0), icon: "trending", href: "/dashboard/leads/all" },
+            { title: "APPLICATIONS", value: String(appsRes.count ?? 0), icon: "briefcase", href: "/dashboard/applications/offers" },
+            { title: "CALL LOGS", value: String(callsRes.count ?? 0), icon: "phone", href: "/dashboard/calls" },
+            { title: "REVENUE", value: `$${totalRevenue.toLocaleString()}`, icon: "dollar", href: "/dashboard/finances" },
         ]
 
         return (
@@ -256,21 +240,7 @@ export default async function DashboardPage() {
                 </div>
 
                 {/* KPI Grid */}
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-                    {stats.map((stat, i) => (
-                        <Link key={i} href={stat.href}>
-                            <Card className="shadow-none border border-slate-200 hover:border-slate-300 transition-all cursor-pointer group rounded-xl">
-                                <CardContent className="p-4 flex flex-col gap-2">
-                                    <div className="flex justify-between items-center text-slate-500">
-                                        <p className="text-[10px] font-semibold uppercase tracking-wider">{stat.title}</p>
-                                        <stat.icon className="h-4 w-4 text-slate-400 group-hover:text-slate-600 transition-colors" />
-                                    </div>
-                                    <h4 className="text-2xl font-bold tracking-tight text-slate-800">{stat.value}</h4>
-                                </CardContent>
-                            </Card>
-                        </Link>
-                    ))}
-                </div>
+                <SummaryCards className="grid grid-cols-2 md:grid-cols-5 gap-4" stats={stats} />
 
                 {/* All Leads (admin view) */}
                 <Card className="shadow-sm">
@@ -439,7 +409,7 @@ export default async function DashboardPage() {
                                     {upcomingTasksRes.data.map((task: any) => (
                                         <div key={task.id} className="flex items-start gap-3 px-4 py-3">
                                             <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${task.priority === 'high' ? 'bg-red-500' :
-                                                    task.priority === 'medium' ? 'bg-amber-500' : 'bg-slate-300'
+                                                task.priority === 'medium' ? 'bg-amber-500' : 'bg-slate-300'
                                                 }`} />
                                             <div className="flex-1 min-w-0">
                                                 <p className="text-sm font-medium text-slate-700 truncate">{task.title}</p>
@@ -524,11 +494,11 @@ export default async function DashboardPage() {
         .order('created_at', { ascending: false })
         .limit(5)
 
-    const agentStats = [
-        { title: "MY LEADS", value: String(leadsRes.count ?? 0), icon: Users, href: "/dashboard/leads/private" },
-        { title: "APPLICATIONS", value: String(appsRes.count ?? 0), icon: Briefcase, href: "/dashboard/applications/offers" },
-        { title: "MY CALLS", value: String(callsRes.count ?? 0), icon: Phone, href: "/dashboard/calls" },
-        { title: "TASKS", value: "—", icon: CheckSquare, href: "/dashboard/tasks" },
+    const agentStats: any = [
+        { title: "MY LEADS", value: String(leadsRes.count ?? 0), icon: "users", href: "/dashboard/leads/private" },
+        { title: "APPLICATIONS", value: String(appsRes.count ?? 0), icon: "briefcase", href: "/dashboard/applications/offers" },
+        { title: "MY CALLS", value: String(callsRes.count ?? 0), icon: "phone", href: "/dashboard/calls" },
+        { title: "TASKS", value: "—", icon: "checksquare", href: "/dashboard/tasks" },
     ]
 
     return (
@@ -550,24 +520,7 @@ export default async function DashboardPage() {
             </div>
 
             {/* Agent KPIs */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                {agentStats.map((stat, i) => (
-                    <Link key={i} href={stat.href}>
-                        <Card className="shadow-none border border-slate-200 hover:border-slate-300 transition-all cursor-pointer group rounded-xl">
-                            <CardContent className="p-5 flex flex-col gap-3">
-                                <div className="flex justify-between items-center text-slate-500">
-                                    <p className="text-[11px] font-semibold uppercase tracking-wider">{stat.title}</p>
-                                    <stat.icon className="h-4 w-4 text-slate-400 group-hover:text-slate-600 transition-colors" />
-                                </div>
-                                <div className="flex items-end justify-between">
-                                    <h4 className="text-3xl font-bold tracking-tight text-slate-800">{stat.value}</h4>
-                                    <ArrowUpRight className="h-4 w-4 text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity mb-1" />
-                                </div>
-                            </CardContent>
-                        </Card>
-                    </Link>
-                ))}
-            </div>
+            <SummaryCards className="grid grid-cols-2 md:grid-cols-4 gap-4 lg:gap-6" stats={agentStats} />
 
             <div className="grid lg:grid-cols-2 gap-6">
                 {/* My Recent Leads */}
@@ -697,7 +650,7 @@ export default async function DashboardPage() {
                                 {agentTasksRes.data.map((task: any) => (
                                     <div key={task.id} className="flex items-start gap-3 px-4 py-3">
                                         <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${task.priority === 'high' ? 'bg-red-500' :
-                                                task.priority === 'medium' ? 'bg-amber-500' : 'bg-slate-300'
+                                            task.priority === 'medium' ? 'bg-amber-500' : 'bg-slate-300'
                                             }`} />
                                         <div className="flex-1 min-w-0">
                                             <p className="text-sm font-medium text-slate-700 truncate">{task.title}</p>

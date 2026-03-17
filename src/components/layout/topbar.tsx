@@ -59,51 +59,57 @@ export async function Topbar({ logoUrl }: { logoUrl?: string }) {
             </div>
 
             {/* Right side Actions */}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-4">
 
                 {/* Notifications */}
                 <NotificationBell />
 
                 {/* User Profile Dropdown */}
-                <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" className="relative h-9 w-9 rounded-full ring-2 ring-primary/10 hover:ring-primary/30 transition-all">
-                            <Avatar className="h-9 w-9">
-                                <AvatarImage src={logoUrl || "/avatars/01.png"} alt={displayName} />
-                                <AvatarFallback className="bg-primary/10 text-primary font-medium">{initials}</AvatarFallback>
-                            </Avatar>
-                        </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent className="w-56" align="end" forceMount>
-                        <DropdownMenuLabel className="font-normal">
-                            <div className="flex flex-col space-y-1">
-                                <p className="text-sm font-semibold leading-none truncate">{displayName}</p>
-                                <p className="text-xs leading-none text-muted-foreground">{roleLabel}</p>
-                            </div>
-                        </DropdownMenuLabel>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem asChild>
-                            <Link href="/dashboard/settings/profile">Profile Settings</Link>
-                        </DropdownMenuItem>
-                        <DropdownMenuItem asChild>
-                            <Link href="/dashboard/finances">Billing</Link>
-                        </DropdownMenuItem>
-                        <DropdownMenuItem asChild>
-                            <Link href="/dashboard/settings">Agency Branding</Link>
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
+                <div className="flex items-center gap-3 pl-4 border-l">
+                    <div className="hidden lg:flex flex-col items-end text-right">
+                        <span className="text-xs font-bold text-foreground leading-tight">{displayName}</span>
+                        <span className="text-[10px] uppercase font-semibold tracking-tighter text-muted-foreground">{roleLabel}</span>
+                    </div>
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" className="relative h-10 w-10 p-0 flex items-center justify-center hover:bg-transparent rounded-full ring-2 ring-primary/5 hover:ring-primary/20 transition-all">
+                                <Avatar className="h-9 w-9 border border-border/50">
+                                    <AvatarImage src={logoUrl || "/avatars/01.png"} alt={displayName} />
+                                    <AvatarFallback className="bg-primary/5 text-primary text-xs font-bold">{initials}</AvatarFallback>
+                                </Avatar>
+                            </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent className="w-56" align="end" forceMount>
+                            <DropdownMenuLabel className="font-normal">
+                                <div className="flex flex-col space-y-1">
+                                    <p className="text-sm font-semibold leading-none truncate">{displayName}</p>
+                                    <p className="text-xs leading-none text-muted-foreground">{roleLabel}</p>
+                                </div>
+                            </DropdownMenuLabel>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem asChild>
+                                <Link href="/dashboard/settings/profile">Profile Settings</Link>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem asChild>
+                                <Link href="/dashboard/finances">Billing</Link>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem asChild>
+                                <Link href="/dashboard/settings">Agency Branding</Link>
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
 
-                        {/* Server Action Logout Form */}
-                        <form action={logout}>
-                            <button type="submit" className="w-full">
-                                <DropdownMenuItem className="text-destructive focus:bg-destructive/10 cursor-pointer w-full">
-                                    Log out
-                                </DropdownMenuItem>
-                            </button>
-                        </form>
+                            {/* Server Action Logout Form */}
+                            <form action={logout}>
+                                <button type="submit" className="w-full">
+                                    <DropdownMenuItem className="text-destructive focus:bg-destructive/10 cursor-pointer w-full">
+                                        Log out
+                                    </DropdownMenuItem>
+                                </button>
+                            </form>
 
-                    </DropdownMenuContent>
-                </DropdownMenu>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+                </div>
             </div>
         </header>
     )

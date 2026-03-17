@@ -3,6 +3,39 @@
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 
+type PaymentEvidence = {
+    id: string
+    amount: number
+    currency: string
+    paid_at: string
+}
+
+async function getPaidInvoiceEvidence(supabase: any, agencyId: string, leadId: string): Promise<PaymentEvidence | null> {
+    const { data: paidInvoice, error } = await supabase
+        .from('invoices')
+        .select('id, amount, currency, paid_at')
+        .eq('agency_id', agencyId)
+        .eq('lead_id', leadId)
+        .eq('status', 'paid')
+        .not('paid_at', 'is', null)
+        .order('paid_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+    if (error) {
+        throw new Error(error.message)
+    }
+
+    if (!paidInvoice) return null
+
+    return {
+        id: paidInvoice.id,
+        amount: Number(paidInvoice.amount || 0),
+        currency: paidInvoice.currency || 'USD',
+        paid_at: paidInvoice.paid_at,
+    }
+}
+
 export async function updateLeadStatus(leadId: string, status: string) {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
@@ -45,7 +78,22 @@ export async function updateLeadStatus(leadId: string, status: string) {
         }
     }
 
-    const { data: userData } = await supabase.from('users').select('agency_id').eq('id', user.id).single()
+    const { data: userData } = await supabase.from('users').select('agency_id, role').eq('id', user.id).single()
+
+    // Any path to Enrolled must satisfy the payment guard.
+    if (status === 'Enrolled' && userData?.agency_id) {
+        try {
+            const evidence = await getPaidInvoiceEvidence(supabase, userData.agency_id, leadId)
+            if (!evidence) {
+                return {
+                    error: 'PAYMENT_REQUIRED',
+                    message: 'No paid invoice with payment timestamp found for this lead. Please record payment first.',
+                }
+            }
+        } catch (err: any) {
+            return { error: err?.message || 'Failed to validate payment evidence' }
+        }
+    }
 
     const { error } = await supabase.from('leads').update({ status }).eq('id', leadId).eq('agency_id', userData?.agency_id)
     if (error) return { error: error.message }
@@ -64,10 +112,13 @@ export async function updateLeadStatus(leadId: string, status: string) {
     return { success: true }
 }
 
+
+
 export async function updateLead(leadId: string, data: {
     first_name?: string; last_name?: string; email?: string; phone?: string
     destination_country?: string; course_interest?: string
     is_shared_with_company?: boolean; nationality?: string; notes?: string
+    lead_score?: number; next_followup_at?: string; ai_category?: 'Hot' | 'Warm' | 'Cold'
     custom_data?: Record<string, any>
 }) {
     const supabase = await createClient()
@@ -151,24 +202,41 @@ export async function convertToStudent(
         .eq('id', user.id)
         .single()
 
+    if (!userData?.agency_id) return { error: 'Could not load user profile' }
+
+    const { data: leadData, error: leadErr } = await supabase
+        .from('leads')
+        .select('id, status, student_type, agency_id')
+        .eq('id', leadId)
+        .eq('agency_id', userData.agency_id)
+        .single()
+
+    if (leadErr || !leadData) return { error: 'Lead not found or unauthorized' }
+
+    if (leadData.status === 'Enrolled') {
+        return { error: 'Lead is already enrolled' }
+    }
+
     const isAdmin = userData?.role === 'super_admin' || userData?.role === 'agency_admin'
 
-    // Payment gate: require a paid invoice unless admin is overriding or they are admin
-    if (!isAdmin || !overridePaymentCheck) {
-        const { data: paidInvoice, error: invoiceErr } = await supabase
-            .from('invoices')
-            .select('id, amount, paid_at')
-            .eq('lead_id', leadId)
-            .eq('status', 'paid')
-            .limit(1)
-            .maybeSingle()
+    if (overridePaymentCheck && !isAdmin) {
+        return { error: 'Only super_admin or agency_admin can bypass payment checks.' }
+    }
 
-        if (invoiceErr) return { error: invoiceErr.message }
+    let paymentEvidence: PaymentEvidence | null = null
 
-        if (!paidInvoice) {
+    // Payment gate: require paid invoice evidence unless admin is explicitly overriding.
+    if (!overridePaymentCheck) {
+        try {
+            paymentEvidence = await getPaidInvoiceEvidence(supabase, userData.agency_id, leadId)
+        } catch (err: any) {
+            return { error: err?.message || 'Failed to validate payment evidence' }
+        }
+
+        if (!paymentEvidence) {
             return {
                 error: 'PAYMENT_REQUIRED',
-                message: 'No paid invoice found for this lead. Please record payment first before converting to a student or learner.',
+                message: 'No paid invoice with payment timestamp found for this lead. Please record payment first before converting.',
             }
         }
     }
@@ -178,19 +246,79 @@ export async function convertToStudent(
         .from('leads')
         .update({ status: 'Enrolled', student_type: studentType })
         .eq('id', leadId)
-        .eq('agency_id', userData?.agency_id)
+        .eq('agency_id', userData.agency_id)
     if (error) return { error: error.message }
 
     const label = studentType === 'abroad' ? '🎓 Study Abroad Student' : '🔬 Test Prep Learner'
+    const conversionMeta = {
+        converted_by: user.id,
+        override_used: overridePaymentCheck,
+        payment_evidence: paymentEvidence
+            ? {
+                invoice_id: paymentEvidence.id,
+                paid_at: paymentEvidence.paid_at,
+                amount: paymentEvidence.amount,
+                currency: paymentEvidence.currency,
+            }
+            : null,
+    }
+
+    if (paymentEvidence) {
+        const { error: paymentRecordError } = await supabase
+            .from('lead_payment_records')
+            .upsert({
+                agency_id: userData.agency_id,
+                lead_id: leadId,
+                invoice_id: paymentEvidence.id,
+                amount: paymentEvidence.amount,
+                currency: paymentEvidence.currency,
+                paid_at: paymentEvidence.paid_at,
+                source: 'invoice_paid',
+                recorded_by: user.id,
+            }, { onConflict: 'lead_id,invoice_id' })
+
+        if (paymentRecordError) {
+            const { error: rollbackError } = await supabase
+                .from('leads')
+                .update({ status: leadData.status, student_type: leadData.student_type || null })
+                .eq('id', leadId)
+                .eq('agency_id', userData.agency_id)
+
+            if (rollbackError) {
+                return {
+                    error: `Lead converted but payment record failed and rollback failed. Payment record error: ${paymentRecordError.message}. Rollback error: ${rollbackError.message}`,
+                }
+            }
+
+            return { error: `Payment record creation failed: ${paymentRecordError.message}. Changes were rolled back.` }
+        }
+    }
 
     // Log conversion activity
-    await supabase.from('activities').insert({
-        agency_id: userData?.agency_id,
+    const { error: activityErr } = await supabase.from('activities').insert({
+        agency_id: userData.agency_id,
         lead_id: leadId,
         user_id: user.id,
         type: 'stage_change',
-        description: `Lead converted to ${label}${overridePaymentCheck && isAdmin ? ' (Admin override — payment bypassed)' : ''}`,
+        description: `Lead converted to ${label}${overridePaymentCheck && isAdmin ? ' (Admin override — payment bypassed)' : ''}. Meta: ${JSON.stringify(conversionMeta)}`,
     })
+
+    if (activityErr) {
+        // Best-effort rollback to avoid silent partial success.
+        const { error: rollbackError } = await supabase
+            .from('leads')
+            .update({ status: leadData.status, student_type: leadData.student_type || null })
+            .eq('id', leadId)
+            .eq('agency_id', userData.agency_id)
+
+        if (rollbackError) {
+            return {
+                error: `Lead converted but audit log failed and rollback failed. Activity error: ${activityErr.message}. Rollback error: ${rollbackError.message}`,
+            }
+        }
+
+        return { error: `Conversion audit log failed: ${activityErr.message}. Changes were rolled back.` }
+    }
 
     revalidatePath(`/dashboard/leads/${leadId}`)
     revalidatePath('/dashboard/leads/all')
@@ -365,9 +493,18 @@ export async function sendWhatsappMessage(leadId: string, message: string) {
                 lead_id: leadId,
                 agency_id: profile.agency_id,
                 user_id: user.id,
-                type: 'note', // 'whatsapp' is not in activity_type enum
+                type: 'note',
                 description: `WhatsApp Message Sent: ${message}`,
             })
+
+        // Log as Message for Unified Chat
+        await supabase.from('messages').insert({
+            agency_id: profile.agency_id,
+            sender_id: user.id,
+            lead_id: leadId,
+            content: message,
+            is_from_lead: false
+        })
 
         revalidatePath(`/dashboard/leads/${leadId}`)
         return { success: true }
@@ -455,10 +592,133 @@ export async function sendEmailMessage(leadId: string, subject: string, message:
                 description: `Email Sent: ${subject}\n\n${message}`,
             })
 
+        // Log as Message for Unified Chat
+        await supabase.from('messages').insert({
+            agency_id: profile.agency_id,
+            sender_id: user.id,
+            lead_id: leadId,
+            content: `Subject: ${subject}\n\n${message}`,
+            is_from_lead: false
+        })
+
         revalidatePath(`/dashboard/leads/${leadId}`)
         return { success: true }
     } catch (err: any) {
         console.error('Email sending error:', err)
         return { error: err.message || 'A network error occurred while sending the email' }
+    }
+}
+
+export async function sendSmsMessage(leadId: string, message: string) {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return { error: 'Unauthorized' }
+
+    const { data: profile } = await supabase
+        .from('users')
+        .select('agency_id')
+        .eq('id', user.id)
+        .single()
+
+    if (!profile?.agency_id) return { error: 'Agency not found' }
+
+    const { data: leadData } = await supabase
+        .from('leads')
+        .select('id, phone, first_name, last_name, agency_id')
+        .eq('id', leadId)
+        .eq('agency_id', profile.agency_id)
+        .single()
+
+    if (!leadData) return { error: 'Lead not found or unauthorized' }
+    if (!leadData.phone) return { error: 'Lead does not have a phone number' }
+
+    const { data: integration } = await supabase
+        .from('agency_integrations')
+        .select('config')
+        .eq('agency_id', profile.agency_id)
+        .eq('provider', 'twilio')
+        .eq('is_active', true)
+        .single()
+
+    const accountSid = integration?.config?.accountSid
+    const authToken = integration?.config?.authToken
+    const fromNumber = integration?.config?.fromNumber
+
+    if (!accountSid || !authToken || !fromNumber) {
+        return { error: 'Twilio is not configured for your agency. Go to Settings > Integrations.' }
+    }
+
+    const toPhone = leadData.phone
+
+    try {
+        const body = new URLSearchParams({
+            To: toPhone,
+            From: fromNumber,
+            Body: message,
+        })
+
+        const authHeader = Buffer.from(`${accountSid}:${authToken}`).toString('base64')
+        const response = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`, {
+            method: 'POST',
+            headers: {
+                Authorization: `Basic ${authHeader}`,
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: body.toString(),
+        })
+
+        const data = await response.json()
+
+        if (!response.ok) {
+            await supabase.from('sms_logs').insert({
+                agency_id: profile.agency_id,
+                lead_id: leadId,
+                sender_user_id: user.id,
+                to_phone: toPhone,
+                from_phone: fromNumber,
+                provider: 'twilio',
+                direction: 'outbound',
+                status: 'failed',
+                message: message,
+                error_message: data?.message || 'Twilio API error',
+            })
+
+            return { error: data?.message || 'Failed to send SMS via Twilio' }
+        }
+
+        await supabase.from('sms_logs').insert({
+            agency_id: profile.agency_id,
+            lead_id: leadId,
+            sender_user_id: user.id,
+            to_phone: toPhone,
+            from_phone: fromNumber,
+            provider: 'twilio',
+            direction: 'outbound',
+            status: data?.status || 'sent',
+            message_sid: data?.sid || null,
+            message,
+        })
+
+        await supabase.from('activities').insert({
+            lead_id: leadId,
+            agency_id: profile.agency_id,
+            user_id: user.id,
+            type: 'note',
+            description: `SMS Sent: ${message}`,
+        })
+
+        await supabase.from('messages').insert({
+            agency_id: profile.agency_id,
+            sender_id: user.id,
+            lead_id: leadId,
+            content: `[SMS] ${message}`,
+            is_from_lead: false,
+        })
+
+        revalidatePath(`/dashboard/leads/${leadId}`)
+        return { success: true }
+    } catch (err: any) {
+        console.error('SMS sending error:', err)
+        return { error: err?.message || 'A network error occurred while sending SMS' }
     }
 }

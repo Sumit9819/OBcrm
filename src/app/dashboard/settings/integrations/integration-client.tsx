@@ -26,6 +26,7 @@ export function IntegrationsClient({ integrations }: IntegrationsClientProps) {
     // Find if providers exist
     const google = integrations.find(i => i.provider === 'google')
     const whatsapp = integrations.find(i => i.provider === 'whatsapp')
+    const twilio = integrations.find(i => i.provider === 'twilio')
 
     const [isSaving, setIsSaving] = useState(false)
 
@@ -35,6 +36,9 @@ export function IntegrationsClient({ integrations }: IntegrationsClientProps) {
 
     const [whatsappToken, setWhatsappToken] = useState(whatsapp?.config?.systemToken || '')
     const [whatsappPhoneId, setWhatsappPhoneId] = useState(whatsapp?.config?.phoneId || '')
+    const [twilioAccountSid, setTwilioAccountSid] = useState(twilio?.config?.accountSid || '')
+    const [twilioAuthToken, setTwilioAuthToken] = useState(twilio?.config?.authToken || '')
+    const [twilioFromNumber, setTwilioFromNumber] = useState(twilio?.config?.fromNumber || '')
 
     const handleGoogleSave = async () => {
         setIsSaving(true)
@@ -87,6 +91,37 @@ export function IntegrationsClient({ integrations }: IntegrationsClientProps) {
             toast.success("WhatsApp Integration removed.")
             setWhatsappToken('')
             setWhatsappPhoneId('')
+        }
+    }
+
+    const handleTwilioSave = async () => {
+        setIsSaving(true)
+        const res = await saveIntegration('twilio', {
+            config: {
+                accountSid: twilioAccountSid,
+                authToken: twilioAuthToken,
+                fromNumber: twilioFromNumber,
+            }
+        })
+        setIsSaving(false)
+        if (res.error) {
+            toast.error(res.error)
+        } else {
+            toast.success("Twilio credentials saved safely.")
+        }
+    }
+
+    const handleTwilioRemove = async () => {
+        setIsSaving(true)
+        const res = await removeIntegration('twilio')
+        setIsSaving(false)
+        if (res.error) {
+            toast.error(res.error)
+        } else {
+            toast.success("Twilio Integration removed.")
+            setTwilioAccountSid('')
+            setTwilioAuthToken('')
+            setTwilioFromNumber('')
         }
     }
 
@@ -209,6 +244,75 @@ export function IntegrationsClient({ integrations }: IntegrationsClientProps) {
                         )}
                         <Button onClick={handleWhatsappSave} disabled={isSaving || !whatsappPhoneId || !whatsappToken}>
                             {whatsapp ? 'Update Config' : 'Connect Account'}
+                        </Button>
+                    </div>
+                </CardFooter>
+            </Card>
+
+            {/* TWILIO SMS CARD */}
+            <Card className={`relative overflow-hidden transition-all border ${twilio ? 'border-primary shadow-sm' : ''}`}>
+                {twilio && <div className="absolute top-0 right-0 w-32 h-32 bg-primary/10 rounded-full blur-3xl -mr-16 -mt-16 pointer-events-none" />}
+
+                <CardHeader>
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <div className={`p-2 rounded-md ${twilio ? 'bg-primary/20 text-primary' : 'bg-sky-100 text-sky-600'}`}>
+                                <MessageCircle className="w-6 h-6" />
+                            </div>
+                            <div>
+                                <CardTitle className="text-xl">Twilio SMS</CardTitle>
+                                <CardDescription>Send SMS reminders and updates from your Twilio number.</CardDescription>
+                            </div>
+                        </div>
+                        {twilio && <CheckCircle2 className="text-primary w-6 h-6" />}
+                    </div>
+                </CardHeader>
+                <CardContent className="space-y-4 pt-4">
+                    <p className="text-sm text-muted-foreground">
+                        Enter your Twilio Account SID, Auth Token, and sender number.
+                    </p>
+
+                    <div className="space-y-4 pt-4 border-t">
+                        <div className="space-y-2">
+                            <Label htmlFor="twilioSid">Account SID</Label>
+                            <Input
+                                id="twilioSid"
+                                placeholder="AC..."
+                                value={twilioAccountSid}
+                                onChange={e => setTwilioAccountSid(e.target.value)}
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="twilioToken">Auth Token</Label>
+                            <Input
+                                id="twilioToken"
+                                type="password"
+                                placeholder="Twilio Auth Token"
+                                value={twilioAuthToken}
+                                onChange={e => setTwilioAuthToken(e.target.value)}
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="twilioFrom">From Number</Label>
+                            <Input
+                                id="twilioFrom"
+                                placeholder="+1XXXXXXXXXX"
+                                value={twilioFromNumber}
+                                onChange={e => setTwilioFromNumber(e.target.value)}
+                            />
+                        </div>
+                    </div>
+                </CardContent>
+                <CardFooter className="bg-muted/30 pt-4 flex justify-between items-center">
+                    <p className="text-xs text-muted-foreground flex items-center gap-1">
+                        <LinkIcon className="w-3 h-3" /> Twilio API credentials required
+                    </p>
+                    <div className="flex items-center gap-2">
+                        {twilio && (
+                            <Button variant="ghost" className="text-red-500 hover:text-red-600 hover:bg-red-50" onClick={handleTwilioRemove} disabled={isSaving}>Disconnect</Button>
+                        )}
+                        <Button onClick={handleTwilioSave} disabled={isSaving || !twilioAccountSid || !twilioAuthToken || !twilioFromNumber}>
+                            {twilio ? 'Update Config' : 'Connect Account'}
                         </Button>
                     </div>
                 </CardFooter>
